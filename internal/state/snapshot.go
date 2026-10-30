@@ -41,9 +41,10 @@ type Collector struct {
 	snap Snapshot
 
 	gitMu    sync.Mutex
-	repos    map[string]*Repo  // gemensam .git-katalog -> repo
-	dirRepo  map[string]string // katalog -> gemensam .git-katalog ("" = inget repo)
-	prs      map[string][]PR   // owner/repo -> öppna PR:er
+	repos    map[string]*Repo   // gemensam .git-katalog -> repo
+	dirRepo  map[string]string  // katalog -> gemensam .git-katalog ("" = inget repo)
+	prs      map[string][]PR    // owner/repo -> öppna PR:er
+	runs     map[string][]CIRun // owner/repo -> senaste körningarna i GitHub Actions
 	errors   map[string]string
 	fastKick chan struct{}
 	gitKick  chan struct{}
@@ -51,7 +52,7 @@ type Collector struct {
 
 func NewCollector(cfg config.Config) *Collector {
 	return &Collector{
-		cfg: cfg, repos: map[string]*Repo{}, dirRepo: map[string]string{}, prs: map[string][]PR{},
+		cfg: cfg, repos: map[string]*Repo{}, dirRepo: map[string]string{}, prs: map[string][]PR{}, runs: map[string][]CIRun{},
 		errors: map[string]string{}, fastKick: make(chan struct{}, 1), gitKick: make(chan struct{}, 1),
 	}
 }
@@ -205,6 +206,9 @@ func (c *Collector) refreshGit() {
 				custom, err := config.RepoActions(r.Name)
 				c.setErr("actions:"+r.Name, err)
 				r.Actions = RepoActions(r.Worktrees[0].Path, custom)
+				wfs, _ := config.RepoWorkflows(r.Name)
+				r.Workflows = Workflows(wfs)
+				r.Dispatch = dispatchWorkflows(r.Worktrees[0].Path)
 			}
 			mu.Lock()
 			fresh[common] = r
@@ -234,10 +238,14 @@ func (c *Collector) refreshPRs() {
 		go func(name string) {
 			defer func() { <-sem; wg.Done() }()
 			prs, err := loadPRs(name)
+			runs, rerr := loadRuns(name)
 			c.gitMu.Lock()
 			if err == nil {
 				c.prs[name] = prs
 				delete(c.errors, "gh:"+name)
+			}
+			if rerr == nil {
+				c.runs[name] = runs
 			}
 			c.gitMu.Unlock()
 		}(name)
@@ -280,6 +288,15 @@ func (c *Collector) refreshFast() {
 		cp.Worktrees = append([]Worktree{}, r.Worktrees...)
 		cp.Branches = append([]Branch{}, r.Branches...)
 		cp.Actions = append([]Action{}, r.Actions...)
+		cp.Workflows = append([]Workflow{}, r.Workflows...)
+		cp.Dispatch = append([]DispatchWorkflow{}, r.Dispatch...)
+		ciRuns := c.runs[r.GitHub]
+		for i := range cp.Worktrees {
+			cp.Worktrees[i].CI = ciFor(ciRuns, cp.Worktrees[i].Branch)
+		}
+		for i := range cp.Branches {
+			cp.Branches[i].CI = ciFor(ciRuns, cp.Branches[i].Name)
+		}
 		cp.PRs = append([]PR{}, c.prs[r.GitHub]...)
 		repos = append(repos, cp)
 	}

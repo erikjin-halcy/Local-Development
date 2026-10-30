@@ -167,6 +167,15 @@ dialog .actions { display: flex; justify-content: flex-end; gap: 8px; }
 .menu .mempty { padding: 14px 12px; color: var(--muted); font-size: 12px; }
 .k-mobile { color: #d2a8ff; border-color: #4b3a6b; }
 .chip.srv.mobile { border-left-color: #d2a8ff; }
+.ci { cursor: pointer; } .ci.success { color: var(--ok); border-color: #2f5e37; } .ci.failure { color: var(--bad); border-color: #6b2b2b; }
+.ci.running { color: var(--warn); border-color: #6a4a24; }
+.wbr { padding: 0 10px 6px; font: 11px var(--mono); color: var(--ok); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.steps { display: flex; flex-direction: column; gap: 6px; }
+.step { display: grid; grid-template-columns: 22px 1fr auto; gap: 8px; align-items: start; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel2); }
+.step[data-pane] { cursor: pointer; } .step[data-pane]:hover { border-color: var(--accent); }
+.step .sr { font: 11px var(--mono); color: var(--muted); word-break: break-all; }
+.runs { display: flex; flex-direction: column; gap: 6px; }
+.runrow { display: grid; grid-template-columns: 20px 1fr auto; gap: 8px; align-items: center; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel2); }
 /* hjälp */
 dialog#help { width: min(860px, 94vw); max-height: 88vh; }
 #help .hbody { padding: 20px 24px; overflow: auto; max-height: calc(88vh - 60px); }
@@ -240,6 +249,7 @@ dialog#help { width: min(860px, 94vw); max-height: 88vh; }
   <dt><span class="badge ok">ren</span> / <span class="badge warn">±9</span></dt><dd>Inga ocommittade ändringar / antal filer med ocommittade ändringar.</dd>
   <dt><span class="badge">↑6 ↓0</span></dt><dd>Commits före (ännu inte pushade) och efter (inte hämtade) remote-branchen.</dd>
   <dt><span class="badge">lokal</span></dt><dd>Branchen finns bara på din dator, den är aldrig pushad.</dd>
+  <dt><span class="badge ci success">CI ✓</span> <span class="badge ci failure">CI ✗</span> <span class="badge ci running">CI ⏳</span></dt><dd>GitHub Actions för branchen: senaste körningen per workflow lyckades, misslyckades eller pågår. Klicka för körningarna, loggar och <b>Kör om</b>.</dd>
   <dt><span class="badge pr">PR #12 ✓</span></dt><dd>Branchens öppna PR. ✓ = godkänd, ✗ = ändringar begärda, "utkast" = draft.</dd>
   <dt class="muted small">Commit · 22 hours ago</dt><dd>Senaste commit på branchen och när den gjordes.</dd>
 </dl>
@@ -254,7 +264,7 @@ dialog#help { width: min(860px, 94vw); max-height: 88vh; }
 
 <h4>Knappar på raden</h4>
 <dl>
-  <dt><button class="sm">Kör ▾</button></dt><dd>Kör något i worktreen: <span class="mono">package.json</span>-skript (även i workspaces, t.ex. Metro i <span class="mono">apps/mobile</span>), make- och just-mål, deploy som känns igen (Firebase, Fly, Vercel) och egna actions. Sök genom att skriva; Enter kör den första. ⚠ = deploy, migrering eller borttagning, som frågar först. Körs i ett eget tmux-fönster.<br>Egna actions: välj <b>✎ Egna actions</b> längst ned i menyn. De sparas lokalt i <span class="mono">~/.config/devctl/actions/&lt;repo&gt;.yaml</span>, aldrig i repot.</dd>
+  <dt><button class="sm">Kör ▾</button></dt><dd>Kör något i worktreen: <span class="mono">package.json</span>-skript (även i workspaces, t.ex. Metro i <span class="mono">apps/mobile</span>), make- och just-mål, deploy som känns igen (Firebase, Fly, Vercel) och egna actions. Överst finns dina <b>workflows</b> (flera steg i följd, t.ex. databas → backend → Metro; förloppet visas steg för steg) och längst ned <b>GitHub Actions</b> som kan startas för hand på branchen. Sök genom att skriva; Enter kör den första. ⚠ = deploy, migrering eller borttagning, som frågar först. Körs i ett eget tmux-fönster.<br>Egna actions: välj <b>✎ Egna actions</b> längst ned i menyn. De sparas lokalt i <span class="mono">~/.config/devctl/actions/&lt;repo&gt;.yaml</span>, aldrig i repot.</dd>
   <dt><button class="sm">Worker</button></dt><dd>Startar Claude Code i ett nytt tmux-fönster i just den här worktreen, med en uppgift du skriver.</dd>
   <dt><button class="sm">Terminal</button></dt><dd>Öppnar ett nytt tmux-fönster i katalogen och visar det i panelen till höger.</dd>
   <dt><button class="sm">+ Anteckning</button></dt><dd>Skapar en anteckning för branchen i Obsidian (mål, anteckningar, status) och öppnar den. Står det <b>Anteckning</b> finns den redan.</dd>
@@ -470,6 +480,7 @@ function wtRow(r, w) {
         ${w.changes ? `<span class="badge warn" title="${w.changes} filer med ocommittade ändringar">±${w.changes}</span>` : `<span class="badge ok" title="Inga ocommittade ändringar">ren</span>`}
         ${w.ahead || w.behind ? `<span class="badge" title="${w.ahead} commits före och ${w.behind} efter ${esc(w.upstream)}">↑${w.ahead} ↓${w.behind}</span>` : ""}
         ${!w.upstream && w.branch && !w.missing ? `<span class="badge" title="Branchen finns bara lokalt (inte pushad)">lokal</span>` : ""}
+        ${ciBadge(r, w.branch, w.ci)}
         ${w.pr ? `<a class="badge pr" href="${esc(w.pr.url)}" target="_blank" rel="noopener" title="${esc(w.pr.title)}">PR #${w.pr.number}${w.pr.draft ? " utkast" : ""}${w.pr.review === "APPROVED" ? " ✓" : w.pr.review === "CHANGES_REQUESTED" ? " ✗" : ""}</a>` : ""}
       </div>
       ${w.last.subject ? `<div class="commit" title="Senaste commit: ${esc(w.last.hash)} av ${esc(w.last.author)}">${esc(w.last.subject)} · ${esc(w.last.when)}</div>` : ""}
@@ -517,6 +528,8 @@ function renderServers(v) {
         <td>${s.pane ? paneChip(s.pane) : s.container ? ctChip(s.container) : `<span class="muted small">—</span>`}</td>
         <td class="cmd" title="${esc(s.command)}">${esc(s.command)}</td>
         <td class="acts">${s.ports.length === 1 ? `<button class="sm" data-open="http://localhost:${s.port}">Öppna</button>` : ""}
+          ${s.pids > 1 && !s.app && s.kind !== "docker" ? `<button class="sm danger" data-act="killGroup" data-pids="${esc([...new Set(by[key(s)].map(x => x.pid))].join(","))}" title="Stoppa alla ${s.pids} processerna (SIGTERM)">Stoppa alla (${s.pids})</button>` : ""}
+          ${s.kind === "docker" && s.container ? `<button class="sm danger" data-act="stopContainer" data-id="${esc(S.docker.containers.find(c => c.name === s.container)?.id || s.container)}" title="Stoppa containern ${esc(s.container)} (OrbStack/Docker fortsätter köra)">Stoppa container</button>` : ""}
           ${s.app || s.kind === "docker" || s.pids > 1 ? "" : `<button class="sm danger" data-act="killProc" data-pid="${s.pid}" title="Skicka SIGTERM">Stoppa</button>`}</td>
       </tr>`).join("")}
     </table>${groups.length ? "" : `<div class="empty">Inga servrar.</div>`}</div>`;
@@ -608,14 +621,21 @@ function renderWindow(w, depth, s, kids) {
       ${B("focusWindow", "◉", `data-w="${esc(w.id)}"`, "Gör aktivt i tmux")}
       ${B("kill", "✕", `data-kind="window" data-t="${esc(w.id)}"`, "Stäng fönster", "danger")}
     </div>
+    ${windowBranches(w)}
     <div class="map" style="aspect-ratio:${1 / ratio}">${ps}</div>
   </div>`;
+}
+
+// Vilka repos och branches fönstrets panes jobbar i
+function windowBranches(w) {
+  const refs = [...new Set(w.panes.filter(p => p.worktree).map(p => `${p.worktree.repo}@${p.worktree.branch}`))];
+  return refs.length ? `<div class="wbr" title="${esc(refs.join("\n"))}">⎇ ${refs.map(esc).join(" · ")}</div>` : "";
 }
 
 function renderTree(sessActs) {
   const tog = id => `<span class="tog" data-tog="${esc(id)}">${collapsed.has(id) ? "▸" : "▾"}</span>`;
   const node = (w, kids) => `<li><div class="trow">${tog(w.id)}<span>${w.kind.includes("orchestrator") ? "🎛" : w.kind === "worker" ? "⚙" : "▭"}</span>
-      <b>${w.index}: ${esc(w.name)}</b>${kindBadge(w.kind)}
+      <b>${w.index}: ${esc(w.name)}</b>${kindBadge(w.kind)}${(r => r.length ? `<span class="badge ok">⎇ ${r.map(esc).join(" · ")}</span>` : "")([...new Set(w.panes.filter(p => p.worktree).map(p => `${p.worktree.repo}@${p.worktree.branch}`))])}
       <span class="tsub">${w.panes.length} pane${w.panes.length === 1 ? "" : "s"}${(kids[w.id] || []).length ? ` · ${kids[w.id].length} underfönster` : ""}</span>
       <span class="tacts">${B("newChild", "+ Underfönster", `data-w="${esc(w.id)}"`, "")}${B("addPane", "+ Pane", `data-w="${esc(w.id)}"`, "")}${B("setParent", "⤷ Flytta", `data-w="${esc(w.id)}"`, "")}${B("renameWindow", "✎", `data-w="${esc(w.id)}"`, "Byt namn")}${B("kill", "✕", `data-kind="window" data-t="${esc(w.id)}"`, "Stäng", "danger")}</span></div>
     ${collapsed.has(w.id) ? "" : `<ul>${w.panes.map(p => `<li><div class="trow ${inspect?.id === p.id ? "sel" : ""}" data-pane="${esc(p.id)}"><span class="tog"></span><span>${p.active ? "▣" : "□"}</span>
@@ -839,6 +859,8 @@ function renderInspector() {
   if (inspect?.kind === "pane" && tab === "orchestrator" && inspect.id === S.orchestrator?.pane) inspect = null;
   main.classList.toggle("inspecting", !!inspect);
   if (!inspect) { el.innerHTML = ""; delete el.dataset.key; return; }
+  if (inspect.kind === "workflow") { renderWorkflowInspect(el); return; }
+  if (inspect.kind === "ci") { renderCIInspect(el); return; }
   if (inspect.kind === "text") {
     if (el.dataset.key === inspect.title) return;
     el.dataset.key = inspect.title;
@@ -871,9 +893,55 @@ async function loadPane(scroll) {
   const pre = $("#iPre"); if (!pre) return;
   try { const r = await api("capture", { pane: inspect.id, lines: 300 }, true); setTerm(pre, r.text, scroll); } catch {}
 }
+const STEP_ICON = { "väntar": "○", "kör": "⏳", "klar": "✓", "misslyckades": "✗", "hoppad": "–" };
+let wfData = null;
+function renderWorkflowInspect(el) {
+  const r = wfData && wfData.id === inspect.id ? wfData : null;
+  if (el.dataset.key !== "wf:" + inspect.id) {
+    el.dataset.key = "wf:" + inspect.id;
+    el.innerHTML = `<div class="row"><h2>▶▶ ${esc(inspect.title || "Workflow")}</h2><button class="sm danger" id="wfCancel">Avbryt</button><button class="sm" id="iClose">✕</button></div><div class="meta" id="wfMeta"></div><div class="steps" id="wfSteps">Laddar…</div>`;
+    loadWorkflow();
+  }
+  if (!r) return;
+  $("#wfMeta").textContent = `${r.repo}@${r.branch} · ${r.status} · startad ${r.started}`;
+  $("#wfCancel").style.display = r.status === "kör" ? "" : "none";
+  $("#wfSteps").innerHTML = r.steps.map((s, i) => `<div class="step" ${s.pane ? `data-pane="${esc(s.pane)}"` : ""} title="${s.pane ? "Visa stegets terminal" : ""}">
+    <span>${STEP_ICON[s.status] || "?"}</span>
+    <div><div>${i + 1}. ${esc(s.label)}</div><div class="sr">${esc(s.run)}${s.dir ? " · i " + esc(s.dir) : ""} · vänta: ${esc(s.wait)}</div>${s.note ? `<div class="small muted">${esc(s.note)}</div>` : ""}</div>
+    <span class="small muted">${esc(s.status)}</span></div>`).join("");
+}
+async function loadWorkflow() {
+  if (inspect?.kind !== "workflow") return;
+  try { wfData = await api("workflow_status", { id: inspect.id }, true); renderWorkflowInspect($("#inspector")); } catch {}
+}
+
+function renderCIInspect(el) {
+  const r = repoOf(inspect.repo); if (!r) return;
+  const ci = r.worktrees.find(w => w.branch === inspect.branch)?.ci || r.branches.find(b => b.name === inspect.branch)?.ci;
+  const key = "ci:" + inspect.repo + inspect.branch + JSON.stringify(ci);
+  if (el.dataset.key === key) return;
+  el.dataset.key = key;
+  const icon = x => x.status !== "completed" ? "⏳" : x.conclusion === "success" ? "✓" : x.conclusion === "skipped" ? "–" : x.conclusion === "cancelled" ? "⊘" : "✗";
+  el.innerHTML = `<div class="row"><h2>${esc(inspect.title)}</h2><button class="sm" id="iClose">✕</button></div>
+    <div class="meta">Senaste körningen per workflow i GitHub Actions. Uppdateras varannan minut.</div>
+    <div class="runs">${(ci?.runs || []).map(x => `<div class="runrow"><span>${icon(x)}</span>
+      <div><div>${esc(x.workflow)}</div><div class="small muted">${esc(x.title)} · ${esc(x.event)} · ${esc((x.created || "").slice(0, 16).replace("T", " "))}</div></div>
+      <span class="row" style="gap:4px"><button class="sm" data-open="${esc(x.url)}">Logg ↗</button>
+      ${x.status === "completed" && x.conclusion !== "success" && x.conclusion !== "skipped" ? `<button class="sm" data-act="ciRerun" data-repo="${esc(inspect.repo)}" data-run="${x.id}" title="Kör om de misslyckade jobben">Kör om</button>` : ""}</span></div>`).join("") || `<div class="muted small">Inga körningar för branchen.</div>`}</div>`;
+}
+
 async function loadText() {
   const pre = $("#iText"); if (!pre || inspect?.kind !== "text") return;
   try { pre.textContent = await inspect.load(); } catch (e) { pre.textContent = e.message; }
+}
+
+// GitHub Actions: senaste körningen per workflow för branchen
+const CI_ICON = { success: "✓", failure: "✗", running: "⏳", none: "–" };
+function ciBadge(r, branch, ci) {
+  if (!ci || !branch) return "";
+  const failed = ci.runs.filter(x => x.status === "completed" && ["failure", "timed_out", "startup_failure"].includes(x.conclusion)).length;
+  const title = ci.runs.map(x => `${x.workflow}: ${x.status === "completed" ? x.conclusion : x.status}`).join("\n");
+  return `<span class="badge ci ${esc(ci.state)}" data-ci="${esc(r.path)}" data-branch="${esc(branch)}" title="GitHub Actions\n${esc(title)}">CI ${CI_ICON[ci.state] || ""}${failed > 1 ? " " + failed : ""}</span>`;
 }
 
 // ---------- Kör-menyn ----------
@@ -886,9 +954,16 @@ function openActionMenu(btn, repoPath, wtPath) {
   m.innerHTML = `<input placeholder="Sök bland ${r.actions.length} actions…" id="menuQ"><div class="mlist"></div>
     <div class="mitem" data-edit="${esc(repoPath)}" style="border-top:1px solid var(--line)"><span class="ml">✎ Egna actions för ${esc(r.name)}…</span><span class="mr">~/.config/devctl/actions/${esc(r.name)}.yaml</span></div>`;
   document.body.append(m);
+  const branch = r.worktrees.find(w => w.path === wtPath)?.branch || "";
+  const items = [
+    ...(r.workflows || []).map(w => ({ id: w.id, label: w.label, group: "Workflows", run: w.steps.map(st => st.action || st.run).join(" → "), danger: w.danger })),
+    ...r.actions,
+    ...(r.github && branch ? (r.dispatch || []).map(d => ({ id: "dispatch:" + d.file, label: d.name, group: "GitHub Actions", run: `${d.file} på ${branch}`, danger: true })) : []),
+  ];
+  m._items = items;
   const draw = () => {
     const q = $("#menuQ").value.toLowerCase();
-    const list = r.actions.filter(a => !q || (a.label + " " + a.run + " " + a.group).toLowerCase().includes(q));
+    const list = items.filter(a => !q || (a.label + " " + a.run + " " + a.group).toLowerCase().includes(q));
     let g = "", html = "";
     list.forEach((a, i) => {
       if (a.group !== g) { g = a.group; html += `<div class="mgroup">${esc(g)}</div>`; }
@@ -909,8 +984,15 @@ function openActionMenu(btn, repoPath, wtPath) {
 function closeMenu() { $("#menu")?.remove(); }
 
 async function runAction(repoPath, wtPath, id) {
-  const r = repoOf(repoPath), a = r.actions.find(x => x.id === id);
+  const r = repoOf(repoPath);
+  const a = ($("#menu")?._items || r.actions).find(x => x.id === id) || r.actions.find(x => x.id === id);
   closeMenu();
+  if (id.startsWith("dispatch:")) return dispatchForm(r, wtPath, id.slice(9));
+  if (id.startsWith("workflow:")) {
+    const go = async confirm => { const res = await api("run_action", { path: wtPath, id, confirm }); openInspect({ kind: "workflow", id: res.workflowRun, title: a.label }); };
+    if (!a.danger) return go(false);
+    return form(`Kör workflow ${a.label}?`, [], "Kör", () => go(true), `<span class="mono">${esc(a.run)}</span><br>i <span class="mono">${esc(short(wtPath))}</span>`);
+  }
   const go = async confirm => {
     const res = await api("run_action", { path: wtPath, id, confirm });
     toast(`${a.label} körs i tmux-fönstret ${res.window}`, true);
@@ -919,6 +1001,21 @@ async function runAction(repoPath, wtPath, id) {
   if (!a.danger) return go(false);
   form(`Kör ${a.label}?`, [], a.label, () => go(true),
     `<span class="mono">${esc(a.run)}</span>${a.dir ? ` <span class="muted">i ${esc(a.dir)}</span>` : ""}<br>i <span class="mono">${esc(short(wtPath))}</span><br><b style="color:var(--warn)">Den här kan ändra något utanför datorn eller ta bort data.</b>`);
+}
+
+// Starta en GitHub Actions-workflow (workflow_dispatch) på branchen, med dess parametrar
+function dispatchForm(r, wtPath, file) {
+  const d = r.dispatch.find(x => x.file === file);
+  const branch = r.worktrees.find(w => w.path === wtPath)?.branch;
+  const fields = d.inputs.map(i => i.options?.length
+    ? { key: "in_" + i.name, label: `${i.name}${i.required ? " *" : ""}${i.description ? " – " + i.description : ""}`, type: "select", value: i.default || i.options[0], options: i.options.map(o => [o, o]) }
+    : { key: "in_" + i.name, label: `${i.name}${i.required ? " *" : ""}${i.description ? " – " + i.description : ""}`, value: i.default || "" });
+  form(`Starta ${d.name} på GitHub`, fields, "Starta", async x => {
+    const inputs = Object.fromEntries(Object.entries(x).filter(([k]) => k.startsWith("in_")).map(([k, v]) => [k.slice(3), v]));
+    await api("ci_dispatch", { repo: r.path, file, ref: branch, inputs, confirm: true });
+    toast(`${d.name} startad på ${branch}`, true);
+    openInspect({ kind: "ci", repo: r.path, branch, title: `CI · ${r.name}@${branch}` });
+  }, `Workflow <span class="mono">${esc(file)}</span> i <span class="mono">${esc(r.github)}</span> körs på GitHub med branchen <b>${esc(branch)}</b>.<br><b style="color:var(--warn)">Den kan deploya eller ändra något utanför datorn.</b>`);
 }
 
 // ---------- formulär ----------
@@ -983,6 +1080,9 @@ document.addEventListener("click", async e => {
     if (a === "focus") return api("select", { pane: id });
     if (a === "title") return form("Pane-titel", [{ key: "title", label: "Titel", value: findPane(id)?.p.title || "" }], "Spara", d => api("title_pane", { pane: id, ...d }));
   }
+  const ciEl = t.closest("[data-ci]");
+  if (ciEl) { const r = repoOf(ciEl.dataset.ci); return openInspect({ kind: "ci", repo: ciEl.dataset.ci, branch: ciEl.dataset.branch, title: `CI · ${r.name}@${ciEl.dataset.branch}` }); }
+  if (t.id === "wfCancel" && inspect?.kind === "workflow") { await api("workflow_cancel", { id: inspect.id }); return loadWorkflow(); }
   const ct = t.closest("[data-ct]");
   if (ct) { const name = ct.dataset.ct; return openInspect({ kind: "text", title: `🐳 ${name}`, load: async () => (await api("docker_logs", { id: name, lines: 300 }, true)).text }); }
   const b = t.closest("button[data-act]");
@@ -1032,6 +1132,9 @@ document.addEventListener("click", async e => {
     case "archive": { const r = repoOf(d.repo); await api("archive", { repo: d.repo, archived: d.archived === "1" });
       return toast(d.archived === "1" ? `${r.name} arkiverat` : `${r.name} återställt`, true); }
     case "privacy": return api("open_privacy");
+    case "ciRerun": { await api("ci_rerun", { repo: d.repo, run: +d.run, failed: true }); return toast("Körs om på GitHub", true); }
+    case "killGroup": if (!confirm2()) return; { const res = await api("kill_processes", { pids: d.pids.split(",").map(Number) }); return toast(`Stoppade ${res.stopped} processer`, true); }
+    case "stopContainer": if (!confirm2()) return; return api("docker", { op: "stop", id: d.id });
     case "repoNote": return api("repo_note", { repo: d.repo, open: true });
     case "prune": return api("worktree_prune", { repo: d.repo });
     case "orchStart": { const o = await api("orchestrator_start"); tab = "orchestrator"; store.set("tab", tab); return; }
@@ -1102,7 +1205,7 @@ $("#btnLog").onclick = async () => { const r = await api("daily_log", { open: tr
 render();
 refresh();
 setInterval(refresh, 2000);
-setInterval(() => { loadPane(false); loadOrch(false); }, 1200);
+setInterval(() => { loadPane(false); loadOrch(false); if (inspect?.kind === "workflow" && !["klar", "misslyckades", "avbruten"].includes(wfData?.status)) loadWorkflow(); }, 1200);
 </script>
 </body>
 </html>

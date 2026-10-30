@@ -140,6 +140,27 @@ actions:
     dir: apps/mobile
 ```
 
+**Workflows** är flera steg i följd, i samma YAML-fil:
+
+```yaml
+workflows:
+  - label: Starta allt
+    steps:
+      - action: dev:disposable-db   # en action ur Kör-menyn, eller run: <kommando>
+        wait: port 54322            # exit (standard), port N, 10s eller none
+      - action: dev
+        wait: port 8080
+      - action: Metro (start) · apps/mobile
+        wait: none
+```
+
+Med `wait: exit` väntar workflowet tills steget är klart och stoppar om det misslyckas. Varje steg körs
+i ett eget tmux-fönster och förloppet visas steg för steg.
+
+**GitHub Actions**: varje branch visar CI-status (✓ ✗ ⏳) från GitHub, med loggar och **Kör om** för
+misslyckade körningar. Workflows med `workflow_dispatch` går att starta för hand på branchen från
+Kör-menyn, med formulär för deras parametrar.
+
 Actions som ser riskabla ut (deploy, migrering, reset, push …) frågar först. De körs i ett eget
 tmux-fönster i worktreen. Från terminalen: `devctl actions <repo>` och `devctl run <repo> <action> [--branch b] [--yes]`.
 

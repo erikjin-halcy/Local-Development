@@ -46,6 +46,7 @@ type Worktree struct {
 	Upstream string `json:"upstream"`
 	Last     Commit `json:"last"`
 	PR       *PR    `json:"pr,omitempty"`
+	CI       *CI    `json:"ci,omitempty"`
 	// Fylls i av snapshot: vad som körs i worktreen
 	Panes      []string `json:"panes"`
 	Servers    []int    `json:"servers"`
@@ -64,6 +65,7 @@ type Branch struct {
 	Subject  string `json:"subject"`
 	Worktree string `json:"worktree,omitempty"`
 	PR       *PR    `json:"pr,omitempty"`
+	CI       *CI    `json:"ci,omitempty"`
 }
 
 type Repo struct {
@@ -76,9 +78,12 @@ type Repo struct {
 	Worktrees []Worktree `json:"worktrees"`
 	Branches  []Branch   `json:"branches"`
 	Actions   []Action   `json:"actions"`
-	PRs       []PR       `json:"prs"`
-	Active    bool       `json:"active"`
-	Archived  bool       `json:"archived"`
+	Workflows []Workflow `json:"workflows"`
+	// GitHub Actions-workflows som går att starta för hand
+	Dispatch []DispatchWorkflow `json:"dispatch"`
+	PRs      []PR               `json:"prs"`
+	Active   bool               `json:"active"`
+	Archived bool               `json:"archived"`
 	// Busy: något körs i repot (panes, servrar eller containrar)
 	Busy     bool   `json:"busy"`
 	LastUnix int64  `json:"lastUnix"`

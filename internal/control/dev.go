@@ -710,7 +710,29 @@ func (c *Controller) runAction(a Args) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("fel i %s: %v", config.ActionsFile(r.Name), err)
 	}
-	for _, x := range state.RepoActions(wt.Path, custom) {
+	all := state.RepoActions(wt.Path, custom)
+	// Lokala workflows: flera actions i följd
+	if strings.HasPrefix(a.S("id"), "workflow:") {
+		wfs, err := config.RepoWorkflows(r.Name)
+		if err != nil {
+			return nil, fmt.Errorf("fel i %s: %v", config.ActionsFile(r.Name), err)
+		}
+		for _, wf := range state.Workflows(wfs) {
+			if wf.ID != a.S("id") {
+				continue
+			}
+			if wf.Danger && !a.B("confirm", false) {
+				return map[string]any{"needsConfirm": true}, fmt.Errorf("%q kräver bekräftelse", wf.Label)
+			}
+			run, err := c.runWorkflow(r, wt, wf, all)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"workflowRun": run.ID}, nil
+		}
+		return nil, fmt.Errorf("%s har inget workflow %q", r.Name, strings.TrimPrefix(a.S("id"), "workflow:"))
+	}
+	for _, x := range all {
 		if x.ID == a.S("id") || strings.EqualFold(x.Label, a.S("id")) {
 			x := x
 			act = &x
@@ -894,4 +916,26 @@ func (c *Controller) repoNote(a Args) (any, error) {
 		return res, openInObsidian(path)
 	}
 	return res, nil
+}
+
+// killProcesses stoppar flera lokala servrar på en gång (t.ex. en grupp Jupyter-kärnor).
+func (c *Controller) killProcesses(a Args) (any, error) {
+	list, _ := a["pids"].([]any)
+	allowed := map[int]bool{}
+	for _, s := range c.col.Snapshot().Servers {
+		if !s.App && s.Kind != "docker" {
+			allowed[s.PID] = true
+		}
+	}
+	stopped := 0
+	for _, v := range list {
+		f, ok := v.(float64)
+		if !ok || !allowed[int(f)] || int(f) <= 1 {
+			continue
+		}
+		if syscall.Kill(int(f), syscall.SIGTERM) == nil {
+			stopped++
+		}
+	}
+	return map[string]int{"stopped": stopped}, nil
 }
