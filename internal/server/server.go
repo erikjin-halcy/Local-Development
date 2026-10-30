@@ -117,11 +117,15 @@ func Run(cfg config.Config) error {
 		writeJSON(w, 200, map[string]any{"ok": true, "result": res})
 	})
 
-	// Pid-filen gör att `devctl stop` (och make install) kan stoppa servern oavsett vem som startade den;
-	// appen startar då om den med den nya binären.
-	_ = os.WriteFile(filepath.Join(config.CacheDir(), "server.pid"), []byte(fmt.Sprint(os.Getpid())), 0o644)
 	addr := fmt.Sprintf("127.0.0.1:%d", cfg.Port)
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err // porten är upptagen, t.ex. av en server som redan körs; rör inte dess pid-fil
+	}
+	// Pid-filen gör att `devctl stop` (och make install) kan stoppa servern oavsett vem som startade den;
+	// appen startar då om den med den nya binären. Skrivs först när porten är vår.
+	_ = os.WriteFile(filepath.Join(config.CacheDir(), "server.pid"), []byte(fmt.Sprint(os.Getpid())), 0o644)
 	log.Printf("devctl körs på http://localhost:%d", cfg.Port)
-	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
-	return srv.ListenAndServe()
+	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	return srv.Serve(ln)
 }

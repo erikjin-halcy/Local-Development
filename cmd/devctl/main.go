@@ -562,6 +562,20 @@ func stop() {
 		fmt.Println("devctl stoppad")
 		return
 	}
+	// Reserv: pid-filen är inaktuell; stoppa den devctl-process som lyssnar på porten
+	cfg, _ := config.Load()
+	if out, err := exec.Command("lsof", "-nP", fmt.Sprintf("-iTCP:%d", cfg.Port), "-sTCP:LISTEN", "-t").Output(); err == nil {
+		for _, f := range strings.Fields(string(out)) {
+			var p int
+			fmt.Sscan(f, &p)
+			if cmd, _ := exec.Command("ps", "-o", "command=", "-p", f).Output(); p > 1 && strings.Contains(string(cmd), "devctl") && strings.Contains(string(cmd), "serve") {
+				if syscall.Kill(p, syscall.SIGTERM) == nil {
+					fmt.Println("devctl stoppad")
+					return
+				}
+			}
+		}
+	}
 	fmt.Println("hittade ingen server startad av devctl (körs den via autostart? devctl autostart --remove)")
 }
 
