@@ -40,6 +40,8 @@ const usage = `devctl – kontrollpanel för lokalt utvecklingsarbete
   devctl note <repo> <branch> [--open]   branchens anteckning i Obsidian
   devctl log [--open]            uppdatera dagens utvecklingslogg i Obsidian
   devctl automation [kommando] [arg]   Local-Automation: veckoarkiv, synk, deploy, inloggningar, tjänster
+  devctl park "<text>" [--repo r] [--from s]   kom ihåg en fråga eller ett önskemål till senare
+  devctl park list [--all] | park done <id>    parkerat för repot du står i (eller --repo)
   devctl orchestrator            starta (eller visa) den globala orkestratorn
   devctl brief                  orkestratorns systemprompt
   devctl autostart [--remove]    starta servern vid inloggning (launchd)
@@ -168,6 +170,8 @@ func main() {
 		fmt.Println(res.(map[string]any)["path"])
 	case "automation":
 		automation(cfg, pos)
+	case "park":
+		park(cfg, pos, flags)
 	case "orchestrator":
 		res, err := c.do("orchestrator_start", nil)
 		must(err)
@@ -427,6 +431,9 @@ func printStatus(s state.Snapshot, all bool) {
 		}
 		if len(r.PRs) > 0 {
 			extra += fmt.Sprintf(" · %d öppna PR", len(r.PRs))
+		}
+		if r.Parked > 0 {
+			extra += fmt.Sprintf(" · 📌 %d parkerade (devctl park list --repo %q)", r.Parked, r.Name)
 		}
 		fmt.Printf("■ %s  %s%s\n", r.Name, short(r.Path), extra)
 		for _, wt := range r.Worktrees {

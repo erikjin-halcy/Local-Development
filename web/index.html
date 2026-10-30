@@ -232,6 +232,7 @@ dialog#help { width: min(860px, 94vw); max-height: 88vh; }
   <dt><b class="mono">Halcy-app</b></dt><dd>Repots namn (katalogens namn).</dd>
   <dt><a>owner/repo ↗</a></dt><dd>Repot på GitHub. Öppnas i webbläsaren.</dd>
   <dt><span class="badge pr">12 öppna PR</span></dt><dd>Öppna pull requests på GitHub. Klicka för att se dem.</dd>
+  <dt><span class="badge warn">📌 3 parkerade</span></dt><dd>Frågor och önskemål som du tog upp medan Claude jobbade med något annat (skillen <span class="mono">parkera</span>). Claude tar upp dem när den är klar. Klicka för listan i Obsidian.</dd>
   <dt class="mono small muted">~/Desktop/…</dt><dd>Var repot ligger.</dd>
   <dt><button class="sm">+ Ny branch</button></dt><dd>Checkar ut en ny eller befintlig branch i en egen katalog bredvid repot (<span class="mono">repo.worktrees/branch</span>), så att du kan jobba på flera branches samtidigt. Välj om Claude ska starta där med en uppgift.</dd>
   <dt><button class="sm">Obsidian</button></dt><dd>Öppnar repots startsida i Obsidian. Varje repo du jobbar med har en egen mapp i valvet (<span class="mono">Projekt/&lt;repo&gt;/</span>) med startsidan och branch-anteckningarna. Länkar, branches och PR:er på startsidan uppdateras automatiskt; resten skriver du själv.</dd>
@@ -442,6 +443,7 @@ function repoCard(r) {
       ${r.archived ? `<span class="badge" title="Arkiverat, men visas eftersom något körs i det">arkiverat</span>` : ""}
       ${r.github ? `<a class="small" href="https://github.com/${esc(r.github)}" target="_blank" rel="noopener">${esc(r.github)} ↗</a>` : `<span class="muted small">ingen GitHub-remote</span>`}
       ${r.prs.length ? `<a class="badge pr" href="https://github.com/${esc(r.github)}/pulls" target="_blank" rel="noopener">${r.prs.length} öppna PR</a>` : ""}
+      ${r.parked ? `<span class="badge warn" style="cursor:pointer" data-act="parked" data-repo="${esc(r.path)}" title="Frågor och önskemål som parkerades medan Claude jobbade med annat. Klicka för att öppna listan i Obsidian.">📌 ${r.parked} parkerade</span>` : ""}
       <span class="muted small mono">${esc(short(r.path))}</span>
       <span class="spacer"></span>
       <span class="hacts">
@@ -1135,6 +1137,7 @@ document.addEventListener("click", async e => {
     case "ciRerun": { await api("ci_rerun", { repo: d.repo, run: +d.run, failed: true }); return toast("Körs om på GitHub", true); }
     case "killGroup": if (!confirm2()) return; { const res = await api("kill_processes", { pids: d.pids.split(",").map(Number) }); return toast(`Stoppade ${res.stopped} processer`, true); }
     case "stopContainer": if (!confirm2()) return; return api("docker", { op: "stop", id: d.id });
+    case "parked": return api("open_parked", { repo: d.repo });
     case "repoNote": return api("repo_note", { repo: d.repo, open: true });
     case "prune": return api("worktree_prune", { repo: d.repo });
     case "orchStart": { const o = await api("orchestrator_start"); tab = "orchestrator"; store.set("tab", tab); return; }

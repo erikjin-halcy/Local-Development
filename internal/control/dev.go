@@ -589,6 +589,9 @@ starta workers (egna Claude Code-sessioner) i egna worktrees. Webbgränssnittet:
 - `+"`devctl note <repo> <branch>`"+` – skapar branchens anteckning i Obsidian och skriver ut sökvägen;
   läs och skriv sedan filen direkt (mål, beslut, status).
 - `+"`devctl log`"+` – uppdaterar dagens utvecklingslogg i Obsidian.
+- `+"`devctl park \"<text>\" --repo <repo>`"+` – parkera en fråga eller ett önskemål som kommer upp
+  medan du jobbar med annat; `+"`devctl park list`"+` och `+"`devctl park done <id>`"+`. Ta upp det
+  parkerade när du är klar med en uppgift.
 
 ## Obsidian
 - Arbetsvalv: %s. Varje repo har en mapp %s/<repo>/ med startsidan <repo>.md och
@@ -850,6 +853,9 @@ func repoSection(cfg config.Config, r state.Repo) string {
 	}
 	if d := claudeDir(cfg, r.Name); d != "" {
 		b.WriteString("\n## Claude\n- [[" + r.Name + "/Claude/CLAUDE|Personliga instruktioner (CLAUDE.md)]]: läses in av Claude Code i repots worktrees\n")
+		if r.Parked > 0 {
+			fmt.Fprintf(&b, "- [[%s/Claude/Parkerat|📌 %d parkerade frågor och önskemål]]\n", r.Name, r.Parked)
+		}
 		for _, f := range recentSessions(cfg, r.Name, 5) {
 			name := strings.TrimSuffix(filepath.Base(f), ".md")
 			b.WriteString("- [[" + name + "]]\n")
@@ -938,4 +944,17 @@ func (c *Controller) killProcesses(a Args) (any, error) {
 		}
 	}
 	return map[string]int{"stopped": stopped}, nil
+}
+
+// openParked öppnar repots lista med parkerade frågor i Obsidian.
+func (c *Controller) openParked(a Args) (any, error) {
+	r, err := FindRepo(c.col.Snapshot(), a.S("repo"))
+	if err != nil {
+		return nil, err
+	}
+	path := config.ParkFile(c.cfg, state.RepoDir(c.cfg, r.Name))
+	if _, err := os.Stat(path); err != nil {
+		return nil, fmt.Errorf("inget parkerat för %s", r.Name)
+	}
+	return map[string]string{"path": path}, openInObsidian(path)
 }

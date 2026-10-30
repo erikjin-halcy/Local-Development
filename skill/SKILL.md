@@ -26,6 +26,8 @@ Flikar går att länka till direkt: `http://localhost:7878/#tmux`, `#servers`, `
 | anteckning för en branch i Obsidian | `devctl note <repo> <branch> [--open]` |
 | dagens utvecklingslogg i Obsidian | `devctl log [--open]` |
 | starta/visa den globala orkestratorn | `devctl orchestrator` |
+| kom ihåg en fråga till senare (se skillen `parkera`) | `devctl park "<text>"`, `devctl park list`, `devctl park done <id>` |
+| köra skript, Metro, deploy eller ett workflow | `devctl actions <repo>`, `devctl run <repo> <action>` |
 
 Repo anges med namn (`Dentio`) eller sökväg. tmux-mål anges med ID (`%12`, `@3`, `$1`).
 Allt annat (byta namn på fönster, dela panes, layout, fönsterhierarki, lokala orkestratorfönster,

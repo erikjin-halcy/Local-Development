@@ -181,6 +181,16 @@ Varje repo du jobbar med har en mapp `Claude/` i sin Obsidian-mapp (`<projectDir
 Importen går via `~/.config/devctl/context/<repo>`, en länk utan mellanslag till valvets mapp, eftersom
 Claude Codes `@`-import inte klarar mellanslag i sökvägar.
 
+## Parkerat: frågor som kommer upp mitt i en uppgift
+
+`devctl park "<text>"` sparar en fråga eller ett önskemål till senare, för repot du står i (eller
+`--repo`). Listan är en checklista i Obsidian, `<projectDir>/<repo>/Claude/Parkerat.md`; utanför
+repos hamnar den i valvets `Parkerat.md`. `devctl park list` visar öppna punkter och
+`devctl park done <id>` bockar av. Översikten visar 📌 och antalet per repo.
+
+Claude-skillen `parkera` (i `claude-skills`) använder det: när du frågar eller ber om något annat medan
+Claude jobbar, sparar den det direkt, gör klart uppgiften och tar sedan upp det som är parkerat.
+
 ## Var allt ligger
 
 | Vad | Var | På GitHub? |
@@ -192,7 +202,7 @@ Claude Codes `@`-import inte klarar mellanslag i sökvägar.
 | Egna actions | `~/.config/devctl/actions/<repo>.yaml` | nej |
 | Arkiverade repos | `~/.config/devctl/archive.json` | nej |
 | Loggar, pid, orkestratorns instruktioner | `~/.cache/devctl/` | nej |
-| Repo-mappar, branch-anteckningar, Claude-kontext, dagliga loggar | Obsidian-valvet i `obsidian.vault` | nej |
+| Repo-mappar, branch-anteckningar, Claude-kontext, parkerat, dagliga loggar | Obsidian-valvet i `obsidian.vault` | nej |
 | Personlig `CLAUDE.local.md` i varje worktree | worktreen (utesluten via `.git/info/exclude`) | nej |
 
 Inget av ditt eget sparas i repot, så samma kod fungerar för alla.

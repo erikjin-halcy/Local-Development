@@ -209,6 +209,7 @@ func (c *Collector) refreshGit() {
 				wfs, _ := config.RepoWorkflows(r.Name)
 				r.Workflows = Workflows(wfs)
 				r.Dispatch = dispatchWorkflows(r.Worktrees[0].Path)
+				r.Parked = config.OpenParked(config.ParkFile(c.cfg, RepoDir(c.cfg, r.Name)))
 			}
 			mu.Lock()
 			fresh[common] = r
