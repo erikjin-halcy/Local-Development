@@ -78,7 +78,7 @@ func (c *Controller) actions() map[string]action {
 		"archive": c.archive, "open_privacy": c.openPrivacy, "run_action": c.runAction, "edit_actions": c.editActions, "repo_note": c.repoNote, "sync_sessions": c.syncSessionsAction,
 		"workflow_status": c.workflowStatus, "workflow_cancel": c.workflowCancel, "ci_rerun": c.ciRerun, "ci_dispatch": c.ciDispatch,
 		"kill_processes": c.killProcesses, "open_parked": c.openParked, "orch_history": c.orchHistory, "orchestrator_reload": c.orchestratorReload,
-		"cloud_push": c.cloudPush, "cloud_status": c.cloudStatus, "open": c.openTarget, "stop_port": c.stopPort, "sessions": c.sessionsAction, "summarize": c.summarize,
+		"commits": c.commits, "cloud_push": c.cloudPush, "cloud_status": c.cloudStatus, "open": c.openTarget, "stop_port": c.stopPort, "sessions": c.sessionsAction, "summarize": c.summarize,
 		"agents": c.agentsList, "agent_run": c.agentRun, "agent_finding": c.agentFinding, "agent_notify": c.agentNotify,
 		"agent_new": c.agentNew, "agent_edit": c.agentEdit, "agent_toggle": c.agentToggle, "changes": c.changes, "diff": c.diff, "worker_start": c.workerStart,
 		"open_worktree": c.openWorktree, "graph": c.graph, "editor": c.editor,

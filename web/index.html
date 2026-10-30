@@ -198,6 +198,13 @@ pre.diff { white-space: pre; }
 #qchat.open { display: flex; }
 #qchat .qmsgs { overflow: auto; padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
 #qchat textarea { margin: 0 12px 12px; width: auto; }
+.commits { display: flex; flex-direction: column; overflow: auto; flex: 1; }
+.commit-row { display: flex; gap: 6px; align-items: stretch; height: 46px; }
+.commit-row .cbody { padding: 4px 0; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+.commit-row .csubj { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commit-row .cmeta { font-size: 11.5px; color: var(--muted); display: flex; gap: 4px; flex-wrap: nowrap; align-items: center; overflow: hidden; white-space: nowrap; }
+.commit-row .cmeta .badge { flex: none; max-width: 170px; overflow: hidden; text-overflow: ellipsis; }
+.commit-row.unpushed .csubj { color: var(--warn); }
 /* hjälp */
 dialog#help { width: min(860px, 94vw); max-height: 88vh; }
 #help .hbody { padding: 20px 24px; overflow: auto; max-height: calc(88vh - 60px); }
@@ -260,7 +267,7 @@ dialog#help { width: min(860px, 94vw); max-height: 88vh; }
   <dt><button class="sm">+ Ny branch</button></dt><dd>Checkar ut en ny eller befintlig branch i en egen katalog bredvid repot (<span class="mono">repo.worktrees/branch</span>), så att du kan jobba på flera branches samtidigt. Välj om Claude ska starta där med en uppgift.</dd>
   <dt><button class="sm">Obsidian</button></dt><dd>Öppnar repots startsida i Obsidian. Varje repo du jobbar med har en egen mapp i valvet (<span class="mono">Projekt/&lt;repo&gt;/</span>) med startsidan och branch-anteckningarna. Länkar, branches och PR:er på startsidan uppdateras automatiskt; resten skriver du själv.</dd>
   <dt>Claude-kontext</dt><dd>Varje repo har en mapp <span class="mono">Claude/</span> i sin Obsidian-mapp: <span class="mono">CLAUDE.md</span> med dina personliga instruktioner för repot, som Claude Code läser in i alla repots worktrees, och <span class="mono">Sessioner/</span> med en sammanfattning per Claude-session (uppdraget, senaste önskemål, ändrade filer, senaste svaret, hur du fortsätter). Sammanfattningen uppdateras högst en gång i timmen och bara medan sessionen är aktiv.</dd>
-  <dt><button class="sm">Graf</button></dt><dd>Commitgrafen över alla branches, i panelen till höger.</dd>
+  <dt><button class="sm">Historik</button></dt><dd>Senaste commits på alla branches, 30 åt gången: meddelande, hash, tid, författare och vilka branches som pekar dit (● = utcheckad). Commits som inte är pushade är markerade. Till vänster visas förgreningar när historiken grenar sig.</dd>
   <dt><button class="sm">Arkivera</button></dt><dd>Gömmer repot från Aktiva/Inaktiva och från <span class="mono">devctl status</span>. Inget i repot ändras. <b>Återställ</b> tar tillbaka det.</dd>
 </dl>
 
@@ -484,7 +491,7 @@ function repoCard(r) {
       <span class="hacts">
       <button class="sm" data-act="wtAdd" data-repo="${esc(r.path)}" title="Checka ut en ny eller befintlig branch i en egen katalog, och starta Claude där om du vill">+ Ny branch</button>
       <button class="sm" data-act="repoNote" data-repo="${esc(r.path)}" ${S.vault ? "" : "disabled"} title="Öppna repots mapp och startsida i Obsidian">Obsidian</button>
-      <button class="sm" data-act="graph" data-repo="${esc(r.path)}" title="Visa commitgrafen över alla branches">Graf</button>
+      <button class="sm" data-act="graph" data-repo="${esc(r.path)}" title="Senaste commits på alla branches">Historik</button>
       <button class="sm" data-act="archive" data-repo="${esc(r.path)}" data-archived="${r.archived ? "0" : "1"}" title="${r.archived ? "Visa repot i översikten igen" : "Göm repot från översikten. Inget i repot ändras."}">${r.archived ? "Återställ" : "Arkivera"}</button>
       </span>
     </div>
@@ -990,6 +997,7 @@ function renderInspector() {
   if (!inspect) { el.innerHTML = ""; delete el.dataset.key; return; }
   if (inspect.kind === "workflow") { renderWorkflowInspect(el); return; }
   if (inspect.kind === "changes") { renderChanges(el); return; }
+  if (inspect.kind === "commits") { renderCommits(el); return; }
   if (inspect.kind === "ci") { renderCIInspect(el); return; }
   if (inspect.kind === "text") {
     if (el.dataset.key === inspect.title) return;
@@ -1080,6 +1088,81 @@ async function renderChanges(el) {
       <span class="chn">${f.add ? `<span class="dadd">+${f.add}</span>` : ""} ${f.del ? `<span class="ddel">−${f.del}</span>` : ""}</span></div>`).join("") : `<div class="muted small">Inga ocommittade ändringar.</div>`}
     ${c.unpushed.length ? `<div class="muted small" style="margin-top:12px">Inte pushat</div>${c.unpushed.map(l => `<div class="chrow"><span class="chs">↑</span><span class="mono">${esc(l)}</span><span></span></div>`).join("")}` : ""}
   </div>`;
+}
+
+// ---------- historik ----------
+// En rad per commit; en smal graf till vänster visar förgreningar (en enkel linje när historiken är linjär).
+function laneLayout(rows) {
+  const lanes = [], out = [];
+  for (const c of rows) {
+    let col = lanes.indexOf(c.hash);
+    const incoming = col >= 0;
+    if (col < 0) { col = lanes.indexOf(null); if (col < 0) col = lanes.length; }
+    const before = lanes.slice();
+    const merging = before.map((h, i) => h === c.hash && i !== col ? i : -1).filter(i => i >= 0);
+    merging.forEach(i => lanes[i] = null);
+    const [p1, ...rest] = c.parents;
+    lanes[col] = p1 || null;
+    const parentCols = p1 ? [col] : [];
+    for (const p of rest) {
+      let i = lanes.indexOf(p);
+      if (i < 0) { i = lanes.indexOf(null); if (i < 0) i = lanes.length; lanes[i] = p; }
+      parentCols.push(i);
+    }
+    while (lanes.length && lanes[lanes.length - 1] === null) lanes.pop();
+    out.push({ col, incoming, before, merging, parentCols });
+  }
+  return out;
+}
+const LANE_COLORS = ["var(--accent)", "var(--ok)", "var(--orch)", "var(--warn)", "#56d4dd", "#ff7eb6"];
+function commitSvg(L, width, H) {
+  const x = i => 7 + i * 12, mid = H / 2, col = i => LANE_COLORS[i % LANE_COLORS.length];
+  let g = "";
+  L.before.forEach((h, i) => { if (h && i !== L.col && !L.merging.includes(i)) g += `<line x1="${x(i)}" y1="0" x2="${x(i)}" y2="${H}" stroke="${col(i)}" stroke-width="2"/>`; });
+  if (L.incoming) g += `<line x1="${x(L.col)}" y1="0" x2="${x(L.col)}" y2="${mid}" stroke="${col(L.col)}" stroke-width="2"/>`;
+  L.merging.forEach(i => g += `<path d="M${x(i)} 0 C${x(i)} ${mid / 2} ${x(L.col)} ${mid / 2} ${x(L.col)} ${mid}" fill="none" stroke="${col(i)}" stroke-width="2"/>`);
+  L.parentCols.forEach(i => g += i === L.col ? `<line x1="${x(i)}" y1="${mid}" x2="${x(i)}" y2="${H}" stroke="${col(i)}" stroke-width="2"/>`
+    : `<path d="M${x(L.col)} ${mid} C${x(L.col)} ${mid + H / 4} ${x(i)} ${mid + H / 4} ${x(i)} ${H}" fill="none" stroke="${col(i)}" stroke-width="2"/>`);
+  g += `<circle cx="${x(L.col)}" cy="${mid}" r="4" fill="var(--panel)" stroke="${col(L.col)}" stroke-width="2"/>`;
+  return `<svg width="${width}" height="${H}" style="flex:none;display:block">${g}</svg>`;
+}
+function refChips(refs) {
+  const order = r => r.startsWith("HEAD") ? 0 : r.startsWith("tag: ") ? 2 : r.includes("/") ? 3 : 1;
+  const sorted = [...refs].sort((a, b) => order(a) - order(b));
+  const shown = sorted.slice(0, 2).map(refChip).join(" ");
+  return shown + (sorted.length > 2 ? ` <span class="badge" title="${esc(sorted.slice(2).join("\n"))}">+${sorted.length - 2}</span>` : "");
+}
+function refChip(ref) {
+  if (ref.startsWith("HEAD -> ")) return `<span class="badge ok" title="Utcheckad branch">● ${esc(ref.slice(8))}</span>`;
+  if (ref === "HEAD") return `<span class="badge ok">● HEAD</span>`;
+  if (ref.startsWith("tag: ")) return `<span class="badge warn">${esc(ref.slice(5))}</span>`;
+  if (ref.includes("/")) return `<span class="badge" title="Remote-branch">${esc(ref)}</span>`;
+  return `<span class="badge pr">${esc(ref)}</span>`;
+}
+async function renderCommits(el) {
+  const key = "commits:" + inspect.repo + ":" + inspect.rows.length;
+  if (el.dataset.key === key) return;
+  el.dataset.key = key;
+  if (!inspect.rows.length && !inspect.loaded) {
+    el.innerHTML = `<div class="row"><h2>${esc(inspect.title)}</h2><button class="sm" id="iClose">✕</button></div><div class="muted small">Laddar…</div>`;
+    const r = await api("commits", { repo: inspect.repo, n: 30, skip: 0 }, true);
+    Object.assign(inspect, { rows: r.commits, more: r.more, loaded: true });
+    delete el.dataset.key;
+    return renderCommits(el);
+  }
+  const layout = laneLayout(inspect.rows);
+  const lanes = Math.max(1, ...layout.map(L => Math.max(L.before.length, L.col + 1, ...L.parentCols.map(i => i + 1))));
+  const width = 8 + lanes * 12, H = 46;
+  const unpushed = inspect.rows.filter(c => c.unpushed).length;
+  el.innerHTML = `<div class="row"><h2>${esc(inspect.title)}</h2><button class="sm" id="iClose">✕</button></div>
+    <div class="meta">Senaste commits på alla branches${unpushed ? ` · <span style="color:var(--warn)">${unpushed} inte pushade</span>` : ""}</div>
+    <div class="commits">${inspect.rows.map((c, i) => `<div class="commit-row ${c.unpushed ? "unpushed" : ""}">
+      ${commitSvg(layout[i], width, H)}
+      <div class="cbody">
+        <div class="csubj">${esc(c.subject)} ${c.unpushed ? `<span class="badge warn" title="Finns bara lokalt, inte på någon remote">ej pushad</span>` : ""}</div>
+        <div class="cmeta"><span class="mono">${esc(c.hash)}</span> · ${esc(c.when)} · ${esc(c.author)} ${refChips(c.refs)}</div>
+      </div></div>`).join("")}</div>
+    ${inspect.more ? `<button class="sm" id="cMore" style="align-self:flex-start">Visa fler</button>` : ""}`;
 }
 
 async function loadText() {
@@ -1223,6 +1306,12 @@ document.addEventListener("click", async e => {
   const tg = t.closest("[data-tog]"); if (tg) { const id = tg.dataset.tog; collapsed.has(id) ? collapsed.delete(id) : collapsed.add(id); return render(); }
   if (t.id === "iClose") return closeInspect();
   if (t.id === "iReload") return loadText();
+  if (t.id === "cMore" && inspect?.kind === "commits") {
+    t.disabled = true;
+    const r = await api("commits", { repo: inspect.repo, n: 30, skip: inspect.rows.length }, true);
+    inspect.rows = inspect.rows.concat(r.commits); inspect.more = r.more;
+    return renderCommits($("#inspector"));
+  }
   if (t.id === "iSend") return sendInspect();
   if (t.id === "orchSend") return sendOrch();
   if (t.id === "orchRaw") { orchRaw = !orchRaw; t.classList.toggle("primary", orchRaw); orchLast = ""; return loadOrch(true); }
@@ -1283,7 +1372,7 @@ document.addEventListener("click", async e => {
     case "wtAddBranch": { const res = await api("worktree_add", { repo: d.repo, branch: d.branch }); return toast(`Worktree: ${short(res.path)}`, true); }
     case "wtRemove": if (!confirm2()) return;
       return api("worktree_remove", { path: d.path, force: d.changes > 0 && b.dataset.forced === "1" }).catch(() => { if (d.changes > 0) { b.dataset.forced = "1"; toast(`Worktreen har ${d.changes} ocommittade ändringar. Klicka ✕ två gånger till för att ta bort ändå.`); } });
-    case "graph": { const r = repoOf(d.repo); return openInspect({ kind: "text", title: `⎇ ${r.name}`, load: async () => (await api("graph", { repo: d.repo, lines: 120 }, true)).text }); }
+    case "graph": { const r = repoOf(d.repo); return openInspect({ kind: "commits", repo: d.repo, title: `Historik · ${r.name}`, rows: [], more: false }); }
     case "term": { const res = await api("open_worktree", { path: d.path }); return openInspect({ kind: "pane", id: res.pane }); }
     case "note": { const res = await api("note", { repo: d.repo, branch: d.branch, open: true }); return toast(res.created ? "Anteckning skapad i Obsidian" : "Öppnar anteckningen i Obsidian", true); }
     case "editor": return api("editor", { path: d.path });

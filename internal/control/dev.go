@@ -1127,3 +1127,13 @@ func readCache(name string) (string, error) {
 	b, err := os.ReadFile(filepath.Join(config.CacheDir(), name))
 	return string(b), err
 }
+
+// commits: historiken för appens panel (strukturerad, 30 åt gången).
+func (c *Controller) commits(a Args) (any, error) {
+	r, err := FindRepo(c.col.Snapshot(), a.S("repo"))
+	if err != nil {
+		return nil, err
+	}
+	rows, more, err := state.Commits(r.Path, min(max(a.I("n", 30), 1), 200), max(a.I("skip", 0), 0))
+	return map[string]any{"commits": rows, "more": more, "repo": r.Name}, err
+}

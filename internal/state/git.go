@@ -321,3 +321,55 @@ func Graph(path string, n int) (string, error) {
 	return git(path, "log", "--graph", "--all", "--date=relative", "-n", itoa(n),
 		"--format=%h %d %s (%cr, %an)", "--color=never")
 }
+
+// CommitRow är en commit i historiken (för appens historikpanel).
+type CommitRow struct {
+	Hash     string   `json:"hash"`
+	Parents  []string `json:"parents"`
+	Refs     []string `json:"refs"`
+	Subject  string   `json:"subject"`
+	When     string   `json:"when"`
+	Author   string   `json:"author"`
+	Unpushed bool     `json:"unpushed"`
+}
+
+// Commits returnerar n commits på alla branches (nyast först, i topologisk ordning), med start vid skip.
+func Commits(path string, n, skip int) ([]CommitRow, bool, error) {
+	out, err := git(path, "log", "--all", "--topo-order", "-n", itoa(n+1), "--skip", itoa(skip),
+		"--format=%h"+"\x1f"+"%p"+"\x1f"+"%D"+"\x1f"+"%s"+"\x1f"+"%cr"+"\x1f"+"%an")
+	if err != nil {
+		return nil, false, err
+	}
+	// Commits på lokala branches som inte finns på någon remote
+	unpushed := map[string]bool{}
+	if up, err := git(path, "log", "--branches", "--not", "--remotes", "--format=%h"); err == nil {
+		for _, h := range strings.Fields(up) {
+			unpushed[h] = true
+		}
+	}
+	rows := []CommitRow{}
+	for _, l := range strings.Split(strings.TrimSpace(out), "\n") {
+		p := strings.Split(l, sep)
+		if len(p) < 6 {
+			continue
+		}
+		r := CommitRow{Hash: p[0], Parents: strings.Fields(p[1]), Subject: p[3], When: p[4], Author: p[5], Unpushed: unpushed[p[0]]}
+		for _, ref := range strings.Split(p[2], ", ") {
+			if ref = strings.TrimSpace(ref); ref != "" {
+				r.Refs = append(r.Refs, ref)
+			}
+		}
+		if r.Parents == nil {
+			r.Parents = []string{}
+		}
+		if r.Refs == nil {
+			r.Refs = []string{}
+		}
+		rows = append(rows, r)
+	}
+	more := len(rows) > n
+	if more {
+		rows = rows[:n]
+	}
+	return rows, more, nil
+}
