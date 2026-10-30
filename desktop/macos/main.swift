@@ -271,6 +271,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     @objc func reload() { webView.reload() }
     @objc func openInBrowser() { NSWorkspace.shared.open(webView.url ?? base) }
+    /// ⌘K: öppna chatten mot orkestratorn, oavsett var fokus ligger i fönstret
+    @objc func quickChat() {
+        showWindow(tab: nil)
+        webView.evaluateJavaScript("typeof toggleQuickChat === 'function' && toggleQuickChat(true)")
+    }
     @objc func showTab(_ sender: NSMenuItem) {
         if let tab = sender.representedObject as? String {
             webView.evaluateJavaScript("location.hash = '\(tab)'")
@@ -313,6 +318,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         var view = [item("Ladda om", #selector(reload), "r", target: self),
                     item("Starta om motorn", #selector(restartEngine), "r", [.command, .shift], target: self),
                     item("Öppna i webbläsaren", #selector(openInBrowser), "o", [.command, .shift], target: self),
+                    item("Fråga orkestratorn", #selector(quickChat), "k", target: self),
                     .separator()]
         for (i, (tab, title)) in [("overview", "Översikt"), ("tmux", "tmux"), ("servers", "Servrar"),
                                   ("docker", "Docker"), ("orchestrator", "Orkestrator"), ("agents", "Agenter"), ("automation", "Automation")].enumerated() {

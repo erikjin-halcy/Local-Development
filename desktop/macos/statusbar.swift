@@ -213,6 +213,7 @@ final class StatusBar: NSObject, NSMenuDelegate {
 
         menu.addItem(.separator())
         _ = add(menu, "Öppna devctl", key: "o") { app.showWindow(tab: nil) }
+        _ = add(menu, "Fråga orkestratorn …") { app.quickChat() }
         _ = add(menu, "Servrar") { app.showWindow(tab: "servers") }
         _ = add(menu, "Docker (\(runningContainers) igång)") { app.showWindow(tab: "docker") }
         _ = add(menu, "Dagens logg i Obsidian") { app.post("daily_log", ["open": true]) }
