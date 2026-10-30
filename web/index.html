@@ -669,15 +669,54 @@ function renderAutomation(v) {
         ${tasks.filter(t => t.lastRun?.exit != null && t.lastRun.exit !== 0).map(t => `<span class="badge bad" title="Senaste körningen misslyckades">${esc(t.name)} ✗</span>`).join("")}` : ""}
       <span class="spacer"></span>
       ${!A.online && A.canStart ? `<button class="primary sm" data-act="autoStart">Starta</button>` : ""}
+      <button class="sm ${autoCmdsOpen ? "primary" : ""}" data-act="autoCmds" title="Veckoarkiv, synk, deploy, inloggningar och tjänster">Kommandon</button>
       <button class="sm" data-act="autoReload">↻</button>
       <button class="sm" data-open="${esc(A.url)}">Öppna i webbläsaren</button>
       ${A.cloudURL ? `<button class="sm" data-open="${esc(A.cloudURL)}">Molnappen ↗</button>` : ""}
     </div>`;
   const frame = $("#autoFrame");
   if (frame && A.online && frame.dataset.url === A.url) { $("#autoBar").outerHTML = bar; return; }
-  v.innerHTML = bar + (A.online
+  v.innerHTML = bar + `<div id="autoCmds"></div>` + (A.online
     ? `<iframe id="autoFrame" data-url="${esc(A.url)}" src="${esc(A.url)}" style="width:100%;height:calc(100vh - 130px);border:1px solid var(--line);border-radius:10px;background:var(--panel)"></iframe>`
     : `<div class="empty">Local-Automations gränssnitt (${esc(A.url)}) svarar inte.${A.canStart ? " Klicka Starta för att starta det." : ""}</div>`);
+  renderAutoCmds();
+}
+
+// Local-Automations kommandon (internal/control/automation_cmds.go). Läsande kommandon visar svaret i
+// inspektören; övriga körs i ett eget tmux-fönster som öppnas i inspektören.
+let autoCmdsOpen = store.get("autoCmds", false), autoCmdList = null;
+async function renderAutoCmds() {
+  const el = $("#autoCmds");
+  if (!el) return;
+  if (!autoCmdsOpen) { el.innerHTML = ""; return; }
+  if (!autoCmdList) {
+    el.innerHTML = `<div class="muted small" style="margin-bottom:12px">Laddar kommandon…</div>`;
+    try { autoCmdList = await api("automation_commands", {}, true); } catch (e) { el.innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+  }
+  const groups = Object.groupBy(autoCmdList, c => c.group);
+  el.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px">` + Object.entries(groups).map(([g, list]) =>
+    `<div style="border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--panel)">
+      <div class="muted small" style="margin-bottom:6px">${esc(g)}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">${list.map(c => `<button class="sm ${c.danger ? "danger" : ""}" data-act="autoCmd" data-cmd="${esc(c.id)}" title="${esc(c.help)}">${esc(c.label)}${c.arg && !c.optional ? "…" : ""}</button>`).join("")}</div>
+    </div>`).join("") + `</div>`;
+}
+
+async function runAutoCmd(id, arg = "") {
+  const c = autoCmdList.find(x => x.id === id);
+  if (c.inline) return openInspect({ kind: "text", title: `${c.group}: ${c.label}`, load: async () => (await api("automation_cmd", { cmd: id, arg }, true)).output || "(inget att visa)" });
+  const res = await api("automation_cmd", { cmd: id, arg });
+  toast(`${c.label}: körs i tmux-fönstret ${res.window}`, true);
+  openInspect({ kind: "pane", id: res.pane });
+}
+
+function autoCmdForm(id) {
+  const c = autoCmdList.find(x => x.id === id);
+  if (!c.arg && !c.danger) return runAutoCmd(id);
+  const field = !c.arg ? [] : [c.choices
+    ? { key: "arg", label: c.arg, type: "select", value: c.choices[0], options: c.choices.map(x => [x, x]) }
+    : { key: "arg", label: c.arg + (c.optional ? " (valfri)" : ""), ph: c.arg === "vecka" ? "2026-V44" : c.arg === "e-post" ? "Google-kontot som äger webbappen; tomt = gcloud-kontot" : "" }];
+  form(`${c.group}: ${c.label}`, field, c.danger ? c.label : "Kör", x => runAutoCmd(id, (x.arg || "").trim()),
+    esc(c.help) + (c.danger ? `<br><b style="color:var(--bad)">Kan inte ångras.</b>` : ""));
 }
 
 // ---------- inspektör ----------
@@ -824,6 +863,8 @@ document.addEventListener("click", async e => {
     case "docker": if (d.op === "stop" && !confirm2()) return; b.disabled = true; return api("docker", { op: d.op, id: d.id }).finally(() => b.disabled = false);
     case "autoStart": { b.disabled = true; await api("automation_start").finally(() => b.disabled = false); return toast("Local-Automation startat", true); }
     case "autoReload": { const f = $("#autoFrame"); if (f) f.src = f.src; return; }
+    case "autoCmds": { autoCmdsOpen = !autoCmdsOpen; store.set("autoCmds", autoCmdsOpen); b.classList.toggle("primary", autoCmdsOpen); return renderAutoCmds(); }
+    case "autoCmd": return autoCmdForm(d.cmd);
     case "archive": { const r = repoOf(d.repo); await api("archive", { repo: d.repo, archived: d.archived === "1" });
       return toast(d.archived === "1" ? `${r.name} arkiverat` : `${r.name} återställt`, true); }
     case "privacy": return api("open_privacy");

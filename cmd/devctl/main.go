@@ -36,8 +36,9 @@ const usage = `devctl – kontrollpanel för lokalt utvecklingsarbete
   devctl graph <repo>            commitgraf över alla branches
   devctl note <repo> <branch> [--open]   branchens anteckning i Obsidian
   devctl log [--open]            uppdatera dagens utvecklingslogg i Obsidian
+  devctl automation [kommando] [arg]   Local-Automation: veckoarkiv, synk, deploy, inloggningar, tjänster
   devctl orchestrator            starta (eller visa) den globala orkestratorn
-  devctl brief                   orkestratorns systemprompt
+  devctl brief                  orkestratorns systemprompt
   devctl autostart [--remove]    starta servern vid inloggning (launchd)
   devctl config                  sökväg till konfigurationen
 
@@ -118,6 +119,8 @@ func main() {
 		res, err := c.do("daily_log", map[string]any{"open": open})
 		must(err)
 		fmt.Println(res.(map[string]any)["path"])
+	case "automation":
+		automation(cfg, pos)
 	case "orchestrator":
 		res, err := c.do("orchestrator_start", nil)
 		must(err)

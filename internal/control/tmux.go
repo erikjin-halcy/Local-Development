@@ -82,6 +82,8 @@ func (c *Controller) actions() map[string]action {
 		// Obsidian och orkestrator
 		"note": c.note, "daily_log": c.dailyLog, "orchestrator_start": c.orchestratorStart, "brief": c.briefAction,
 		"open_url": c.openURL, "automation_start": c.automationStart,
+		// Local-Automations kommandon (automation_cmds.go)
+		"automation_commands": c.automationCommands, "automation_cmd": c.automationCmd,
 	}
 }
 
