@@ -117,6 +117,45 @@ för agenter. Den globala orkestratorn styr allt genom dem.
   ger en genväg till molnappen och `dir` gör att devctl kan starta gränssnittet om det inte körs.
 - `logEveryMinutes`: hur ofta dagens logg uppdateras medan servern körs (0 = bara på begäran).
 
+## Kör: skript, Metro, deploy och egna actions
+
+**Kör ▾** på varje branchrad listar allt som går att köra i den worktreen, grupperat i Egna, Starta,
+Deploy, Bygg, Kontroll, Databas och Övrigt:
+
+- `package.json`-skript, även i workspaces (t.ex. Metro i `apps/mobile`), med rätt pakethanterare
+- mål i `Makefile` och `justfile`
+- deploy som känns igen från `firebase.json`, `fly.toml` och `vercel.json`
+- egna actions i `~/.config/devctl/actions/<repo>.yaml` (lokalt, aldrig i repot):
+
+```yaml
+actions:
+  - label: Deploy staging
+    run: ./scripts/deploy.sh staging
+    group: Deploy
+    danger: true        # frågar innan
+  - label: Metro (rensa cache)
+    run: npx expo start --clear
+    dir: apps/mobile
+```
+
+Actions som ser riskabla ut (deploy, migrering, reset, push …) frågar först. De körs i ett eget
+tmux-fönster i worktreen. Från terminalen: `devctl actions <repo>` och `devctl run <repo> <action> [--branch b] [--yes]`.
+
+## Var allt ligger
+
+| Vad | Var | På GitHub? |
+|---|---|---|
+| devctl:s kod | detta repo | ja |
+| Motorn (CLI + server + gränssnitt) | `~/.local/bin/devctl` | nej, byggs med `make install` |
+| Appen | `/Applications/Devctl.app` | nej, byggs med `make install-app` |
+| Inställningar | `~/.config/devctl/config.json` | nej |
+| Egna actions | `~/.config/devctl/actions/<repo>.yaml` | nej |
+| Arkiverade repos | `~/.config/devctl/archive.json` | nej |
+| Loggar, pid, orkestratorns instruktioner | `~/.cache/devctl/` | nej |
+| Branch-anteckningar och dagliga loggar | Obsidian-valvet i `obsidian.vault` | nej |
+
+Inget av ditt eget sparas i repot, så samma kod fungerar för alla.
+
 ## Översikt: aktiva, inaktiva och arkiv
 
 Översikten visar som standard bara **aktiva** repos: där något körs, med commits eller ändringar

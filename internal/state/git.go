@@ -75,6 +75,7 @@ type Repo struct {
 	Default   string     `json:"default"`
 	Worktrees []Worktree `json:"worktrees"`
 	Branches  []Branch   `json:"branches"`
+	Actions   []Action   `json:"actions"`
 	PRs       []PR       `json:"prs"`
 	Active    bool       `json:"active"`
 	Archived  bool       `json:"archived"`

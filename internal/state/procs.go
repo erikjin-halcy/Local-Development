@@ -114,7 +114,8 @@ var kinds = []struct {
 	re   *regexp.Regexp
 }{
 	{"docker", regexp.MustCompile(`(?i)orbstack|com\.docker|vpnkit|docker-proxy`)},
-	{"frontend", regexp.MustCompile(`(?i)\bvite\b|next(-server| dev| start)|webpack|react-scripts|\bastro\b|\bnuxt\b|svelte-kit|remix|\bexpo\b|storybook|parcel|ng serve|metro`)},
+	{"mobile", regexp.MustCompile(`(?i)expo/bin/cli start|expo start|react-native start|metro`)},
+	{"frontend", regexp.MustCompile(`(?i)\bvite\b|next(-server| dev| start)|webpack|react-scripts|\bastro\b|\bnuxt\b|svelte-kit|remix|storybook|parcel|ng serve`)},
 	{"database", regexp.MustCompile(`(?i)\bpostgres\b|mysqld|redis-server|mongod|clickhouse|cockroach|surreal`)},
 	{"backend", regexp.MustCompile(`(?i)uvicorn|gunicorn|hypercorn|flask|django|manage\.py|fastapi|\bnest\b|express|nodemon|tsx (watch|src)|ts-node|go-build|\bair\b|rails|puma|cargo run|\bdeno\b|\bbun\b|server\.(m?js|ts|py)|api\.(m?js|ts|py)|app\.py|main\.py|\.mjs|wrangler|supabase|firebase`)},
 	{"ai", regexp.MustCompile(`(?i)ollama|lm ?studio|llama`)},

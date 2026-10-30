@@ -144,6 +144,19 @@ dialog h3 { margin: 0; font: 600 15px var(--mono); }
 dialog label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
 dialog .hint { font-size: 12px; color: var(--muted); }
 dialog .actions { display: flex; justify-content: flex-end; gap: 8px; }
+/* Kör-menyn */
+.menu { position: fixed; z-index: 40; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 40px #0009;
+  width: 360px; max-height: 60vh; display: flex; flex-direction: column; overflow: hidden; }
+.menu input { border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 9px 12px; }
+.menu .mlist { overflow: auto; padding: 4px 0; }
+.menu .mgroup { font-size: 11px; color: var(--muted); padding: 8px 12px 3px; text-transform: uppercase; letter-spacing: .04em; }
+.menu .mitem { padding: 5px 12px; cursor: pointer; display: flex; flex-direction: column; }
+.menu .mitem:hover, .menu .mitem.hl { background: var(--panel2); }
+.menu .mitem .ml { font-size: 13px; } .menu .mitem .mr { font: 11px var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.menu .mitem.danger .ml::after { content: " ⚠"; color: var(--warn); }
+.menu .mempty { padding: 14px 12px; color: var(--muted); font-size: 12px; }
+.k-mobile { color: #d2a8ff; border-color: #4b3a6b; }
+.chip.srv.mobile { border-left-color: #d2a8ff; }
 /* hjälp */
 dialog#help { width: min(860px, 94vw); max-height: 88vh; }
 #help .hbody { padding: 20px 24px; overflow: auto; max-height: calc(88vh - 60px); }
@@ -222,13 +235,14 @@ dialog#help { width: min(860px, 94vw); max-height: 88vh; }
 <h4>Vad som körs (chipsen)</h4>
 <dl>
   <dt><span class="chip pane">▣ %42 pico Local-Automation:2</span></dt><dd>En tmux-pane som står i worktreen: pane-id, programmet som körs, session:fönster. Klicka för att se vad den visar och skriva till den.</dd>
-  <dt><span class="chip srv frontend">:8080 frontend</span></dt><dd>En lokal server som startats från worktreen: port och typ (grön frontend, orange backend, blå databas, turkos Docker). Klicka för att öppna den i webbläsaren.</dd>
+  <dt><span class="chip srv frontend">:8080 frontend</span></dt><dd>En lokal server som startats från worktreen: port och typ (grön frontend, lila mobil/Metro, orange backend, blå databas, turkos Docker). Klicka för att öppna den i webbläsaren.</dd>
   <dt><span class="chip srv">Python · 12 processer · 67 portar</span></dt><dd>Många portar från samma program (t.ex. Jupyter-kärnor), ihopslagna. Klicka för att se dem i Servrar.</dd>
   <dt><span class="chip ct">🐳 supabase · …</span></dt><dd>Docker/OrbStack-containrar vars projekt ligger i worktreen. Klicka för loggar, eller fliken Docker för alla.</dd>
 </dl>
 
 <h4>Knappar på raden</h4>
 <dl>
+  <dt><button class="sm">Kör ▾</button></dt><dd>Kör något i worktreen: <span class="mono">package.json</span>-skript (även i workspaces, t.ex. Metro i <span class="mono">apps/mobile</span>), make- och just-mål, deploy som känns igen (Firebase, Fly, Vercel) och egna actions. Sök genom att skriva; Enter kör den första. ⚠ = deploy, migrering eller borttagning, som frågar först. Körs i ett eget tmux-fönster.<br>Egna actions: välj <b>✎ Egna actions</b> längst ned i menyn. De sparas lokalt i <span class="mono">~/.config/devctl/actions/&lt;repo&gt;.yaml</span>, aldrig i repot.</dd>
   <dt><button class="sm">Worker</button></dt><dd>Startar Claude Code i ett nytt tmux-fönster i just den här worktreen, med en uppgift du skriver.</dd>
   <dt><button class="sm">Terminal</button></dt><dd>Öppnar ett nytt tmux-fönster i katalogen och visar det i panelen till höger.</dd>
   <dt><button class="sm">+ Anteckning</button></dt><dd>Skapar en anteckning för branchen i Obsidian (mål, anteckningar, status) och öppnar den. Står det <b>Anteckning</b> finns den redan.</dd>
@@ -450,6 +464,7 @@ function wtRow(r, w) {
     <div class="row">${running || `<span class="muted small">inget igång</span>`}</div>
     <div class="acts">
       ${w.missing ? "" : `
+      <button class="sm" data-act="actions" data-repo="${esc(r.path)}" data-path="${esc(w.path)}" ${r.actions.length ? "" : "disabled"} title="${r.actions.length ? `Kör något i den här worktreen: skript, make-mål, Metro, deploy (${r.actions.length} st)` : "Inga skript, make-mål eller egna actions hittades"}">Kör ▾</button>
       <button class="sm" data-act="worker" data-repo="${esc(r.path)}" data-branch="${esc(w.branch)}" ${w.branch ? "" : "disabled"} title="Starta Claude Code i ett eget tmux-fönster i den här worktreen, med en uppgift">Worker</button>
       <button class="sm" data-act="term" data-path="${esc(w.path)}" title="Öppna ett nytt tmux-fönster i den här katalogen">Terminal</button>
       <button class="sm" data-act="note" data-repo="${esc(r.path)}" data-branch="${esc(w.branch)}" ${w.branch && S.vault ? "" : "disabled"} title="${w.note ? "Öppna branchens anteckning i Obsidian" : "Skapa en anteckning för branchen i Obsidian"}">${w.note ? "Anteckning" : "+ Anteckning"}</button>
@@ -725,6 +740,7 @@ function closeInspect() { inspect = null; render(); }
 
 function renderInspector() {
   const el = $("#inspector"), main = $("#main");
+  if (inspect?.kind === "pane" && tab === "orchestrator" && inspect.id === S.orchestrator?.pane) inspect = null;
   main.classList.toggle("inspecting", !!inspect);
   if (!inspect) { el.innerHTML = ""; delete el.dataset.key; return; }
   if (inspect.kind === "text") {
@@ -764,6 +780,51 @@ async function loadText() {
   try { pre.textContent = await inspect.load(); } catch (e) { pre.textContent = e.message; }
 }
 
+// ---------- Kör-menyn ----------
+// Actions för en worktree, grupperade (Egna, Starta, Deploy, Bygg, Kontroll, Databas, Övrigt).
+function openActionMenu(btn, repoPath, wtPath) {
+  closeMenu();
+  const r = repoOf(repoPath); if (!r) return;
+  const m = document.createElement("div");
+  m.className = "menu"; m.id = "menu";
+  m.innerHTML = `<input placeholder="Sök bland ${r.actions.length} actions…" id="menuQ"><div class="mlist"></div>
+    <div class="mitem" data-edit="${esc(repoPath)}" style="border-top:1px solid var(--line)"><span class="ml">✎ Egna actions för ${esc(r.name)}…</span><span class="mr">~/.config/devctl/actions/${esc(r.name)}.yaml</span></div>`;
+  document.body.append(m);
+  const draw = () => {
+    const q = $("#menuQ").value.toLowerCase();
+    const list = r.actions.filter(a => !q || (a.label + " " + a.run + " " + a.group).toLowerCase().includes(q));
+    let g = "", html = "";
+    list.forEach((a, i) => {
+      if (a.group !== g) { g = a.group; html += `<div class="mgroup">${esc(g)}</div>`; }
+      html += `<div class="mitem ${a.danger ? "danger" : ""} ${i === 0 && q ? "hl" : ""}" data-aid="${esc(a.id)}" title="${esc(a.run)}${a.dir ? " (i " + esc(a.dir) + ")" : ""}">
+        <span class="ml">${esc(a.label)}</span><span class="mr">${esc(a.run)}</span></div>`;
+    });
+    m.querySelector(".mlist").innerHTML = html || `<div class="mempty">Inget matchar.</div>`;
+  };
+  m.dataset.repo = repoPath; m.dataset.path = wtPath;
+  draw();
+  const b = btn.getBoundingClientRect();
+  const h = Math.min(m.offsetHeight, innerHeight * 0.6);
+  m.style.left = Math.max(8, Math.min(b.right - 360, innerWidth - 368)) + "px";
+  m.style.top = (b.bottom + 4 + h > innerHeight ? Math.max(8, b.top - h - 4) : b.bottom + 4) + "px";
+  $("#menuQ").addEventListener("input", draw);
+  $("#menuQ").focus();
+}
+function closeMenu() { $("#menu")?.remove(); }
+
+async function runAction(repoPath, wtPath, id) {
+  const r = repoOf(repoPath), a = r.actions.find(x => x.id === id);
+  closeMenu();
+  const go = async confirm => {
+    const res = await api("run_action", { path: wtPath, id, confirm });
+    toast(`${a.label} körs i tmux-fönstret ${res.window}`, true);
+    openInspect({ kind: "pane", id: res.pane });
+  };
+  if (!a.danger) return go(false);
+  form(`Kör ${a.label}?`, [], a.label, () => go(true),
+    `<span class="mono">${esc(a.run)}</span>${a.dir ? ` <span class="muted">i ${esc(a.dir)}</span>` : ""}<br>i <span class="mono">${esc(short(wtPath))}</span><br><b style="color:var(--warn)">Den här kan ändra något utanför datorn eller ta bort data.</b>`);
+}
+
 // ---------- formulär ----------
 function form(title, fields, submit, onSubmit, hint = "") {
   const f = $("#dlgForm");
@@ -799,6 +860,11 @@ function workerForm(repoPath, branch) {
 // ---------- händelser ----------
 document.addEventListener("click", async e => {
   const t = e.target;
+  const ed = t.closest("#menu [data-edit]");
+  if (ed) { closeMenu(); const res = await api("edit_actions", { repo: ed.dataset.edit }); return toast(`Öppnar ${short(res.path)} i editorn. Sparade ändringar syns i menyn inom 10 sekunder.`, true); }
+  const mi = t.closest("#menu .mitem");
+  if (mi) { const m = $("#menu"); return runAction(m.dataset.repo, m.dataset.path, mi.dataset.aid); }
+  if ($("#menu") && !t.closest("#menu") && !t.closest('[data-act="actions"]')) closeMenu();
   const tb = t.closest("[data-tab]"); if (tb) { tab = tb.dataset.tab; store.set("tab", tab); lastKey = ""; return render(); }
   const tgo = t.closest("[data-tabgo]"); if (tgo) { tab = tgo.dataset.tabgo; store.set("tab", tab); return render(); }
   const rv = t.closest("[data-rview]"); if (rv) { opts.repoView = rv.dataset.rview; store.set("opts", opts); return render(); }
@@ -837,6 +903,7 @@ document.addEventListener("click", async e => {
     return false;
   };
   switch (a) {
+    case "actions": return $("#menu")?.dataset.path === d.path ? closeMenu() : openActionMenu(b, d.repo, d.path);
     case "worker": return workerForm(d.repo, d.branch);
     case "workerBranch": return workerForm(d.repo, d.branch);
     case "workerNew": return workerForm(d.repo || repoOptions()[0]?.[0]);
@@ -906,6 +973,10 @@ document.addEventListener("change", e => {
 document.addEventListener("toggle", e => { const d = e.target.closest?.("[data-det]"); if (d) d.open ? collapsed.add(d.dataset.det) : collapsed.delete(d.dataset.det); }, true);
 document.addEventListener("input", e => { if (e.target.id === "q") { opts.q = e.target.value; store.set("opts", opts); const pos = e.target.selectionStart; render(); const q = $("#q"); q.focus(); q.setSelectionRange(pos, pos); } });
 document.addEventListener("keydown", e => {
+  if ($("#menu")) {
+    if (e.key === "Escape") { e.preventDefault(); return closeMenu(); }
+    if (e.key === "Enter" && e.target.id === "menuQ") { const first = $("#menu .mitem"); if (first) { e.preventDefault(); const m = $("#menu"); return runAction(m.dataset.repo, m.dataset.path, first.dataset.aid); } }
+  }
   if (e.target.id === "iIn" && e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); sendInspect(); }
   if (e.target.id === "orchIn" && e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendOrch(); }
   if (e.key === "Escape" && inspect && !$("#dlg").open && !["iIn", "orchIn"].includes(e.target.id)) closeInspect();
@@ -923,6 +994,7 @@ async function sendOrch() {
   setTimeout(() => loadOrch(true), 400);
 }
 
+window.addEventListener("scroll", closeMenu, true);
 $("#btnOrch").onclick = async () => {
   if (!S.orchestrator) await api("orchestrator_start");
   tab = "orchestrator"; store.set("tab", tab); render();

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/erikjin-halcy/Local-Development/internal/config"
+	"github.com/erikjin-halcy/Local-Development/internal/control"
 	"github.com/erikjin-halcy/Local-Development/internal/server"
 	"github.com/erikjin-halcy/Local-Development/internal/state"
 )
@@ -34,6 +35,8 @@ const usage = `devctl – kontrollpanel för lokalt utvecklingsarbete
   devctl worktree rm <sökväg> [--force]
   devctl pane list | send <%%id> <text> | keys <%%id> <tangenter…> | capture <%%id> [-n rader]
   devctl graph <repo>            commitgraf över alla branches
+  devctl actions <repo>          skript, make-mål, deploy och egna actions för repot
+  devctl run <repo> <action> [--branch b] [--yes]   kör en action i branchens worktree (tmux)
   devctl note <repo> <branch> [--open]   branchens anteckning i Obsidian
   devctl log [--open]            uppdatera dagens utvecklingslogg i Obsidian
   devctl automation [kommando] [arg]   Local-Automation: veckoarkiv, synk, deploy, inloggningar, tjänster
@@ -99,6 +102,50 @@ func main() {
 		}
 	case "pane":
 		paneCmd(c, pos, flags)
+	case "actions":
+		if len(pos) < 1 {
+			fail(errors.New("användning: devctl actions <repo>"))
+		}
+		must(c.ensure())
+		snap, err := c.state()
+		must(err)
+		r, err := control.FindRepo(snap, pos[0])
+		must(err)
+		group := ""
+		for _, a := range r.Actions {
+			if a.Group != group {
+				group = a.Group
+				fmt.Printf("\n%s\n", group)
+			}
+			warn := ""
+			if a.Danger {
+				warn = "  ⚠ kräver --yes"
+			}
+			fmt.Printf("  %-34s %s%s\n", trunc(a.Label, 34), trunc(a.Run, 60), warn)
+		}
+	case "run":
+		if len(pos) < 2 {
+			fail(errors.New("användning: devctl run <repo> <action> [--branch b] [--yes]"))
+		}
+		must(c.ensure())
+		snap, err := c.state()
+		must(err)
+		r, err := control.FindRepo(snap, pos[0])
+		must(err)
+		path := r.Worktrees[0].Path
+		if b := flags["branch"]; b != "" {
+			found := false
+			for _, wt := range r.Worktrees {
+				if wt.Branch == b {
+					path, found = wt.Path, true
+				}
+			}
+			if !found {
+				fail(fmt.Errorf("%s har ingen worktree för %s (devctl worktree add %s %s)", r.Name, b, r.Name, b))
+			}
+		}
+		_, yes := flags["yes"]
+		printResult(c.do("run_action", map[string]any{"path": path, "id": strings.Join(pos[1:], " "), "confirm": yes}))
 	case "graph":
 		if len(pos) < 1 {
 			fail(errors.New("användning: devctl graph <repo>"))
@@ -164,7 +211,7 @@ func abs(p string) string {
 func parse(args []string) ([]string, map[string]string) {
 	var pos []string
 	flags := map[string]string{}
-	boolean := map[string]bool{"json": true, "all": true, "force": true, "open": true, "remove": true}
+	boolean := map[string]bool{"json": true, "all": true, "force": true, "open": true, "remove": true, "yes": true}
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		if strings.HasPrefix(a, "-") && len(a) > 1 && !strings.HasPrefix(a, "-%") {

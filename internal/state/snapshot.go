@@ -201,6 +201,11 @@ func (c *Collector) refreshGit() {
 		go func(common string) {
 			defer func() { <-sem; wg.Done() }()
 			r := loadRepo(common)
+			if len(r.Worktrees) > 0 {
+				custom, err := config.RepoActions(r.Name)
+				c.setErr("actions:"+r.Name, err)
+				r.Actions = RepoActions(r.Worktrees[0].Path, custom)
+			}
 			mu.Lock()
 			fresh[common] = r
 			mu.Unlock()
@@ -274,6 +279,7 @@ func (c *Collector) refreshFast() {
 		cp := *r
 		cp.Worktrees = append([]Worktree{}, r.Worktrees...)
 		cp.Branches = append([]Branch{}, r.Branches...)
+		cp.Actions = append([]Action{}, r.Actions...)
 		cp.PRs = append([]PR{}, c.prs[r.GitHub]...)
 		repos = append(repos, cp)
 	}

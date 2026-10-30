@@ -677,3 +677,84 @@ func (c *Controller) openPrivacy(Args) (any, error) {
 	_, err := sysx.Run(10*time.Second, "open", "x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders")
 	return nil, err
 }
+
+// runAction kör en av repots actions (skript, make-mål, deploy, egna) i ett tmux-fönster i worktreen.
+// Riskabla actions (deploy, migrering, borttagning …) kräver confirm: true.
+func (c *Controller) runAction(a Args) (any, error) {
+	if err := a.need("path", "id"); err != nil {
+		return nil, err
+	}
+	path := config.Home(a.S("path"))
+	r, err := FindRepo(c.col.Snapshot(), path)
+	if err != nil {
+		return nil, err
+	}
+	var wt *state.Worktree
+	for i := range r.Worktrees {
+		if r.Worktrees[i].Path == path {
+			wt = &r.Worktrees[i]
+		}
+	}
+	if wt == nil {
+		wt = &r.Worktrees[0]
+	}
+	// Läs om från worktreen själv; skripten kan skilja sig mellan branches
+	var act *state.Action
+	custom, err := config.RepoActions(r.Name)
+	if err != nil {
+		return nil, fmt.Errorf("fel i %s: %v", config.ActionsFile(r.Name), err)
+	}
+	for _, x := range state.RepoActions(wt.Path, custom) {
+		if x.ID == a.S("id") || strings.EqualFold(x.Label, a.S("id")) {
+			x := x
+			act = &x
+			break
+		}
+	}
+	if act == nil {
+		return nil, fmt.Errorf("%s har ingen action %q (se devctl actions %s)", r.Name, a.S("id"), r.Name)
+	}
+	if act.Danger && !a.B("confirm", false) {
+		return map[string]any{"needsConfirm": true, "action": act}, fmt.Errorf("%q kräver bekräftelse", act.Label)
+	}
+	dir := filepath.Join(wt.Path, act.Dir)
+	branch := wt.Branch
+	if branch == "" {
+		branch = wt.Head
+	}
+	wid, pane, err := newWindowIn(c.cfg.Session, r.Name+"/"+branch+": "+act.Label, dir)
+	if err != nil {
+		return nil, err
+	}
+	_, _ = tmux("set-option", "-w", "-t", wid, "automatic-rename", "off")
+	_, _ = tmux("set-option", "-w", "-t", wid, "@kind", "action")
+	if o := c.col.Snapshot().Orchestrator; o != nil && a.B("underOrchestrator", false) {
+		_ = setParent(wid, o.Window)
+	}
+	line := act.Run + `; echo; echo "── klart (exit $?) ──"`
+	return map[string]any{"window": wid, "pane": pane, "action": act, "dir": dir}, runIn(pane, line)
+}
+
+// editActions öppnar repots fil med egna actions i editorn och skapar den med en mall om den saknas.
+func (c *Controller) editActions(a Args) (any, error) {
+	r, err := FindRepo(c.col.Snapshot(), a.S("repo"))
+	if err != nil {
+		return nil, err
+	}
+	path := config.ActionsFile(r.Name)
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		if err := os.MkdirAll(config.ActionsDir(), 0o755); err != nil {
+			return nil, err
+		}
+		if err := os.WriteFile(path, []byte(config.ActionsTemplate(r.Name)), 0o644); err != nil {
+			return nil, err
+		}
+	}
+	if c.cfg.Editor != "" && sysx.Has(c.cfg.Editor) {
+		_, err = sysx.Run(15*time.Second, c.cfg.Editor, path)
+	} else {
+		_, err = sysx.Run(10*time.Second, "open", "-t", path)
+	}
+	c.col.Refresh(true)
+	return map[string]string{"path": path}, err
+}
