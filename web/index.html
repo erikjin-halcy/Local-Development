@@ -71,7 +71,7 @@ main.inspecting { grid-template-columns: minmax(0, 1fr) 460px; }
 /* Knappar visas bara när muspekaren är över repots huvud eller en rad */
 .hacts { display: flex; gap: 4px; }
 .chead .hacts, .wt .acts, .blist .acts { visibility: hidden; }
-.chead:hover .hacts, .chead:focus-within .hacts, .wt:hover .acts, .wt:focus-within .acts,
+.card:hover .chead .hacts, .chead:focus-within .hacts, .wt:hover .acts, .wt:focus-within .acts,
 .blist .brow:hover .acts { visibility: visible; }
 .wt.missing .acts { visibility: visible; }
 details.branches { padding: 6px 14px 10px; }
@@ -218,7 +218,7 @@ dialog#help { width: min(860px, 94vw); max-height: 88vh; }
 </dl>
 
 <h4>Repokortets huvud</h4>
-<p class="muted small" style="margin:0 0 8px">Knapparna i huvudet och på raderna visas när du håller muspekaren över dem.</p>
+<p class="muted small" style="margin:0 0 8px">Huvudets knappar visas när muspekaren är någonstans på repokortet; radens knappar när den är på raden.</p>
 <dl>
   <dt><b class="mono">Halcy-app</b></dt><dd>Repots namn (katalogens namn).</dd>
   <dt><a>owner/repo ↗</a></dt><dd>Repot på GitHub. Öppnas i webbläsaren.</dd>
