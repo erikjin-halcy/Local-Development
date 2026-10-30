@@ -14,6 +14,8 @@ jobbar med just nu:
   bygg fönsterhierarkier och skapa lokala orkestratorfönster med workers.
 - **Global orkestrator**: en Claude Code-session som ser hela läget via `devctl` och kan skapa
   worktrees och starta workers på en branch. Du chattar med den direkt i webbgränssnittet.
+- **Local-Automation**: dina schemalagda Claude-uppgifter i en egen flik (dess gränssnitt bäddas in),
+  med status i menyraden.
 - **Obsidian**: en anteckning per branch och en daglig utvecklingslogg i ett valv. Orkestratorn
   får läsa de valv du väljer som kontext.
 
@@ -23,7 +25,13 @@ Allt körs lokalt. Servern lyssnar bara på `127.0.0.1` och avvisar anrop från 
 
 `Devctl.app` är ett vanligt Mac-program: öppna det så ser du direkt alla repos, worktrees,
 tmux-panes, servrar och containrar. Appen innehåller `devctl` och startar servern själv om den
-inte redan körs (och stänger den när du avslutar, om appen startade den). Länkar till GitHub
+inte redan körs (och stänger den när du avslutar, om appen startade den). En ikon i menyraden visar
+hur många branches som har något igång och ger snabb åtkomst till servrar, worktrees, orkestratorn
+och Local-Automation.
+
+Första gången frågar macOS om appen får läsa mapparna där dina repos ligger (t.ex. Skrivbord).
+Svara Tillåt; annars hittar servern inga repos. Appen är ad hoc-signerad, så frågan kommer igen
+efter varje ombyggnad. Länkar till GitHub
 och Obsidian öppnas i respektive program. ⌘1–⌘5 byter flik, ⌘R laddar om.
 
 ```bash
@@ -85,7 +93,12 @@ för agenter. Den globala orkestratorn styr allt genom dem.
     "logDir": "Dev-logg",
     "readVaults": ["~/…/Annat valv"]
   },
-  "logEveryMinutes": 30
+  "logEveryMinutes": 30,
+  "automation": {
+    "url": "http://localhost:4777",
+    "cloudURL": "https://…web.app",
+    "dir": "~/…/Local-Automation"
+  }
 }
 ```
 
@@ -94,6 +107,8 @@ för agenter. Den globala orkestratorn styr allt genom dem.
 - `obsidian.vault`: valvet där branch-anteckningar (`Branches/<repo>/<branch>.md`) och dagliga loggar
   (`Dev-logg/ÅÅÅÅ-MM-DD.md`) skrivs. I loggen skrivs bara delen mellan `devctl`-markeringarna om;
   egna anteckningar i filen bevaras.
+- `automation`: Local-Automations lokala gränssnitt (`url`), som visas i Automation-fliken. `cloudURL`
+  ger en genväg till molnappen och `dir` gör att devctl kan starta gränssnittet om det inte körs.
 - `logEveryMinutes`: hur ofta dagens logg uppdateras medan servern körs (0 = bara på begäran).
 
 ## Hur det fungerar

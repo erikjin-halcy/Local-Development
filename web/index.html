@@ -173,7 +173,7 @@ let opts = store.get("opts", { inactive: false, apps: false, stopped: false, tmu
 const collapsed = new Set();
 let inspect = null; // { kind: "pane", id } | { kind: "text", title, load }
 
-const TABS = [["overview", "Översikt"], ["tmux", "tmux"], ["servers", "Servrar"], ["docker", "Docker"], ["orchestrator", "Orkestrator"]];
+const TABS = [["overview", "Översikt"], ["tmux", "tmux"], ["servers", "Servrar"], ["docker", "Docker"], ["orchestrator", "Orkestrator"], ["automation", "Automation"]];
 // Flikar går att länka till: http://localhost:7878/#docker
 if (TABS.some(([k]) => k === location.hash.slice(1))) tab = location.hash.slice(1);
 window.addEventListener("hashchange", () => { const h = location.hash.slice(1); if (TABS.some(([k]) => k === h)) { tab = h; render(); } });
@@ -214,14 +214,17 @@ const paneLabel = p => { const t = p.title && p.title !== hostname() ? p.title :
 function render() {
   const nW = S.repos.reduce((a, r) => a + r.worktrees.filter(w => !w.missing).length, 0);
   const nP = panes().length, nS = S.servers.filter(s => !s.app).length, nC = S.docker.containers.filter(c => c.state === "running").length;
-  const counts = { overview: S.repos.filter(r => r.active).length, tmux: nP, servers: nS, docker: nC, orchestrator: S.orchestrator ? "●" : "" };
+  const A = S.automation || {};
+  const failed = (A.tasks || []).filter(t => t.lastRun && t.lastRun.exit != null && t.lastRun.exit !== 0).length;
+  const counts = { overview: S.repos.filter(r => r.active).length, tmux: nP, servers: nS, docker: nC, orchestrator: S.orchestrator ? "●" : "",
+    automation: !A.url ? "" : !A.online ? "○" : failed ? `${failed}✗` : (A.tasks || []).filter(t => t.running).length ? "▶" : (A.tasks || []).length };
   $("#tabs").innerHTML = TABS.map(([k, l]) => `<button data-tab="${k}" class="${tab === k ? "on" : ""}">${l}<span class="n">${counts[k] ?? ""}</span></button>`).join("");
   $("#stats").textContent = `${nW} worktrees · ${nP} panes · ${nS} servrar · ${nC} containrar`;
   $("#btnOrch").textContent = S.orchestrator ? "Orkestrator ●" : "Starta orkestrator";
   if (location.hash.slice(1) !== tab) history.replaceState(null, "", "#" + tab);
   store.set("tab", tab);
   const v = $("#view");
-  ({ overview: renderOverview, tmux: renderTmux, servers: renderServers, docker: renderDocker, orchestrator: renderOrch }[tab] || renderOverview)(v);
+  ({ overview: renderOverview, tmux: renderTmux, servers: renderServers, docker: renderDocker, orchestrator: renderOrch, automation: renderAutomation }[tab] || renderOverview)(v);
   renderInspector();
 }
 
@@ -527,6 +530,29 @@ function setTerm(pre, text, scroll) {
   if (pre.textContent !== t) { pre.textContent = t; if (scroll || atBottom) pre.scrollTop = pre.scrollHeight; }
 }
 
+// ---------- Local-Automation ----------
+// Local-Automations eget gränssnitt bäddas in; raden ovanför visar status och genvägar.
+function renderAutomation(v) {
+  const A = S.automation || {};
+  if (!A.url) { v.innerHTML = `<div class="empty">Local-Automation är inte konfigurerat. Sätt <code>automation.url</code> i konfigurationen.</div>`; return; }
+  const tasks = A.tasks || [];
+  const bar = `<div class="toolbar" id="autoBar">
+      <span class="badge ${A.online ? "ok" : "bad"}">${A.online ? "igång" : "svarar inte"}</span>
+      ${A.online ? `<span class="muted small">${tasks.length} uppgifter · ${tasks.filter(t => t.enabled).length} schemalagda${tasks.some(t => t.running) ? " · kör nu: " + tasks.filter(t => t.running).map(t => esc(t.name)).join(", ") : ""}</span>
+        ${tasks.filter(t => t.lastRun?.exit != null && t.lastRun.exit !== 0).map(t => `<span class="badge bad" title="Senaste körningen misslyckades">${esc(t.name)} ✗</span>`).join("")}` : ""}
+      <span class="spacer"></span>
+      ${!A.online && A.canStart ? `<button class="primary sm" data-act="autoStart">Starta</button>` : ""}
+      <button class="sm" data-act="autoReload">↻</button>
+      <button class="sm" data-open="${esc(A.url)}">Öppna i webbläsaren</button>
+      ${A.cloudURL ? `<button class="sm" data-open="${esc(A.cloudURL)}">Molnappen ↗</button>` : ""}
+    </div>`;
+  const frame = $("#autoFrame");
+  if (frame && A.online && frame.dataset.url === A.url) { $("#autoBar").outerHTML = bar; return; }
+  v.innerHTML = bar + (A.online
+    ? `<iframe id="autoFrame" data-url="${esc(A.url)}" src="${esc(A.url)}" style="width:100%;height:calc(100vh - 130px);border:1px solid var(--line);border-radius:10px;background:var(--panel)"></iframe>`
+    : `<div class="empty">Local-Automations gränssnitt (${esc(A.url)}) svarar inte.${A.canStart ? " Klicka Starta för att starta det." : ""}</div>`);
+}
+
 // ---------- inspektör ----------
 function openInspect(x) { inspect = x; delete $("#inspector").dataset.key; render(); }
 function closeInspect() { inspect = null; render(); }
@@ -660,6 +686,8 @@ document.addEventListener("click", async e => {
     case "editor": return api("editor", { path: d.path });
     case "killProc": if (!confirm2()) return; return api("kill_process", { pid: +d.pid });
     case "docker": if (d.op === "stop" && !confirm2()) return; b.disabled = true; return api("docker", { op: d.op, id: d.id }).finally(() => b.disabled = false);
+    case "autoStart": { b.disabled = true; await api("automation_start").finally(() => b.disabled = false); return toast("Local-Automation startat", true); }
+    case "autoReload": { const f = $("#autoFrame"); if (f) f.src = f.src; return; }
     case "orchStart": { const o = await api("orchestrator_start"); tab = "orchestrator"; store.set("tab", tab); return; }
     case "attachOrch": return api("attach", { session: S.orchestrator.session });
     case "brief": return openInspect({ kind: "text", title: "Orkestratorns instruktioner", load: async () => (await api("brief", {}, true)).text });

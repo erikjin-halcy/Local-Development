@@ -465,6 +465,22 @@ func printStatus(s state.Snapshot, all bool) {
 			fmt.Println("  (inga igång)")
 		}
 	}
+	if a := s.Automation; a.URL != "" {
+		if !a.Online {
+			fmt.Printf("\nLocal-Automation: inte igång (%s)\n", a.URL)
+		} else {
+			on, failed := 0, 0
+			for _, t := range a.Tasks {
+				if t.Enabled {
+					on++
+				}
+				if t.LastRun != nil && t.LastRun.Exit != nil && *t.LastRun.Exit != 0 {
+					failed++
+				}
+			}
+			fmt.Printf("\nLocal-Automation: %d uppgifter, %d schemalagda, %d misslyckades senast (%s)\n", len(a.Tasks), on, failed, a.URL)
+		}
+	}
 	fmt.Println("\ntmux:")
 	for _, se := range s.Sessions {
 		var ws []string

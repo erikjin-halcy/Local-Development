@@ -22,6 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     var window: NSWindow!
     var webView: WKWebView!
     var server: Process?
+    var statusBar: StatusBar?
 
     func applicationDidFinishLaunching(_ note: Notification) {
         buildMenu()
@@ -37,6 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                           styleMask: [.titled, .closable, .miniaturizable, .resizable],
                           backing: .buffered, defer: false)
         window.title = "devctl"
+        window.isReleasedWhenClosed = false // fönstret återanvänds när det öppnas igen från Dock eller menyraden
         window.backgroundColor = NSColor(red: 0.05, green: 0.07, blue: 0.09, alpha: 1)
         window.contentView = webView
         window.center()
@@ -46,6 +48,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
         showMessage("Startar devctl…")
         DispatchQueue.global().async { self.ensureServer() }
+        statusBar = StatusBar(port: port, app: self)
+    }
+
+    /// Visar fönstret, eventuellt på en viss flik.
+    func showWindow(tab: String?) {
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        if let tab { webView.evaluateJavaScript("location.hash = '\(tab)'") }
+    }
+
+    /// Anropar devctl-API:t (samma som webbgränssnittet använder).
+    func post(_ action: String, _ body: [String: Any], done: ((Bool) -> Void)? = nil) {
+        var req = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/api/action")!)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("1", forHTTPHeaderField: "X-Devctl")
+        var b = body
+        b["action"] = action
+        req.httpBody = try? JSONSerialization.data(withJSONObject: b)
+        req.timeoutInterval = 120
+        URLSession.shared.dataTask(with: req) { _, resp, _ in
+            let ok = (resp as? HTTPURLResponse)?.statusCode == 200
+            DispatchQueue.main.async { done?(ok); self.statusBar?.fetch() }
+        }.resume()
     }
 
     // MARK: server
@@ -137,7 +163,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             return
         }
         let own = (url.host == "localhost" || url.host == "127.0.0.1") && url.port == port
-        if own || url.scheme == "about" || action.targetFrame == nil && url.scheme == nil {
+        // Inbäddade lokala sidor (t.ex. Local-Automation i Automation-fliken) laddas i sin ram
+        let localFrame = (url.host == "localhost" || url.host == "127.0.0.1") && action.targetFrame?.isMainFrame == false
+        if own || localFrame || url.scheme == "about" {
             return decisionHandler(.allow)
         }
         NSWorkspace.shared.open(url)
@@ -200,7 +228,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                     item("Öppna i webbläsaren", #selector(openInBrowser), "o", [.command, .shift], target: self),
                     .separator()]
         for (i, (tab, title)) in [("overview", "Översikt"), ("tmux", "tmux"), ("servers", "Servrar"),
-                                  ("docker", "Docker"), ("orchestrator", "Orkestrator")].enumerated() {
+                                  ("docker", "Docker"), ("orchestrator", "Orkestrator"), ("automation", "Automation")].enumerated() {
             let m = item(title, #selector(showTab(_:)), "\(i + 1)", target: self)
             m.representedObject = tab
             view.append(m)

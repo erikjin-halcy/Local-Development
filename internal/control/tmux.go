@@ -80,7 +80,7 @@ func (c *Controller) actions() map[string]action {
 		"kill_process": c.killProcess, "docker": c.docker, "docker_logs": c.dockerLogs,
 		// Obsidian och orkestrator
 		"note": c.note, "daily_log": c.dailyLog, "orchestrator_start": c.orchestratorStart, "brief": c.briefAction,
-		"open_url": c.openURL,
+		"open_url": c.openURL, "automation_start": c.automationStart,
 	}
 }
 

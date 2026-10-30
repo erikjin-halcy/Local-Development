@@ -17,16 +17,27 @@ type Obsidian struct {
 	ReadVaults []string `json:"readVaults"`
 }
 
+// Automation är Local-Automation (schemalagda Claude-uppgifter) som visas i en egen flik.
+type Automation struct {
+	// Adress till Local-Automations lokala gränssnitt
+	URL string `json:"url"`
+	// Adress till molnversionen av webbappen (valfri)
+	CloudURL string `json:"cloudURL"`
+	// Repots katalog; används för att starta gränssnittet om det inte körs (valfri)
+	Dir string `json:"dir"`
+}
+
 type Config struct {
 	Port      int      `json:"port"`
 	Roots     []string `json:"roots"`
 	ScanDepth int      `json:"scanDepth"`
 	// Session där orkestratorn och workers skapas
-	Session         string   `json:"session"`
-	OrchestratorCmd string   `json:"orchestratorCmd"`
-	WorkerCmd       string   `json:"workerCmd"`
-	Editor          string   `json:"editor"`
-	Obsidian        Obsidian `json:"obsidian"`
+	Session         string     `json:"session"`
+	OrchestratorCmd string     `json:"orchestratorCmd"`
+	WorkerCmd       string     `json:"workerCmd"`
+	Editor          string     `json:"editor"`
+	Obsidian        Obsidian   `json:"obsidian"`
+	Automation      Automation `json:"automation"`
 	// Minuter mellan automatiska uppdateringar av dagens logg (0 = av)
 	LogEveryMinutes int `json:"logEveryMinutes"`
 }
@@ -58,6 +69,7 @@ func defaults() Config {
 		OrchestratorCmd: "claude", WorkerCmd: "claude", Editor: "code",
 		Obsidian:        Obsidian{BranchDir: "Branches", LogDir: "Dev-logg", ReadVaults: []string{}},
 		LogEveryMinutes: 30,
+		Automation:      Automation{URL: "http://localhost:4777"},
 	}
 }
 
@@ -85,6 +97,7 @@ func Load() (Config, error) {
 		c.Obsidian.ReadVaults[i] = Home(r)
 	}
 	c.Obsidian.Vault = Home(c.Obsidian.Vault)
+	c.Automation.Dir = Home(c.Automation.Dir)
 	return c, nil
 }
 

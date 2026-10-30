@@ -20,7 +20,7 @@ lipo -create -output "$APP/Contents/Resources/devctl" "$TMP/devctl-arm64" "$TMP/
 
 echo "▶ appskal (Swift)"
 for arch in arm64 x86_64; do
-  swiftc -O -target "$arch-apple-macos13.0" -o "$TMP/Devctl-$arch" "$HERE/main.swift"
+  swiftc -O -target "$arch-apple-macos13.0" -o "$TMP/Devctl-$arch" "$HERE/main.swift" "$HERE/statusbar.swift"
 done
 lipo -create -output "$APP/Contents/MacOS/Devctl" "$TMP/Devctl-arm64" "$TMP/Devctl-x86_64"
 

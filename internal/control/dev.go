@@ -266,8 +266,9 @@ func (c *Controller) dockerLogs(a Args) (any, error) {
 func (c *Controller) openURL(a Args) (any, error) {
 	u := a.S("url")
 	if !strings.HasPrefix(u, "http://localhost:") && !strings.HasPrefix(u, "http://127.0.0.1:") &&
-		!strings.HasPrefix(u, "https://github.com/") && !strings.HasPrefix(u, "obsidian://") {
-		return nil, errors.New("bara localhost-, GitHub- och obsidian-länkar")
+		!strings.HasPrefix(u, "https://github.com/") && !strings.HasPrefix(u, "obsidian://") &&
+		(c.cfg.Automation.CloudURL == "" || !strings.HasPrefix(u, c.cfg.Automation.CloudURL)) {
+		return nil, errors.New("bara localhost-, GitHub-, Obsidian- och Local-Automation-länkar")
 	}
 	_, err := sysx.Run(10*time.Second, "open", u)
 	return nil, err
@@ -582,4 +583,18 @@ func (c *Controller) orchestratorStart(a Args) (any, error) {
 	}
 	c.col.Refresh(false)
 	return &state.Orchestrator{Session: c.cfg.Session, Window: wid, Pane: pane}, runIn(pane, cmd)
+}
+
+// automationStart startar Local-Automations gränssnitt med repots eget installationsskript.
+func (c *Controller) automationStart(Args) (any, error) {
+	d := c.cfg.Automation.Dir
+	if d == "" {
+		return nil, fmt.Errorf("sätt automation.dir i %s", config.Path())
+	}
+	script := filepath.Join(d, "ui", "install-ui.sh")
+	if _, err := os.Stat(script); err != nil {
+		return nil, fmt.Errorf("hittar inte %s", script)
+	}
+	out, err := sysx.Combined(30*time.Second, script)
+	return map[string]string{"output": strings.TrimSpace(out)}, err
 }

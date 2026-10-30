@@ -27,6 +27,7 @@ type Snapshot struct {
 	Docker       Docker            `json:"docker"`
 	Orchestrator *Orchestrator     `json:"orchestrator"`
 	Vault        string            `json:"vault"`
+	Automation   Automation        `json:"automation"`
 	Errors       map[string]string `json:"errors"`
 }
 
@@ -93,6 +94,12 @@ func (c *Collector) Start() {
 	}()
 	go c.loop(2*time.Second, c.fastKick, c.refreshFast)
 	go c.loop(10*time.Second, c.gitKick, func() { c.refreshGit(); c.refreshFast() })
+	go c.loop(time.Minute, nil, func() {
+		if c.repoCount() == 0 {
+			c.discover()
+			c.refreshGit()
+		}
+	})
 	go c.loop(2*time.Minute, nil, c.discover)
 	go c.loop(2*time.Minute, nil, func() { c.refreshPRs(); c.refreshFast() })
 	go func() { time.Sleep(2 * time.Second); c.refreshPRs(); c.refreshFast() }()
@@ -127,10 +134,13 @@ func (c *Collector) repoFor(dir string) string {
 	if ok {
 		return common
 	}
-	common, _ = commonDir(dir)
-	c.gitMu.Lock()
-	c.dirRepo[dir] = common
-	c.gitMu.Unlock()
+	common, err := commonDir(dir)
+	// Kom bara ihåg säkra svar; en timeout (t.ex. medan macOS frågar om behörighet) prövas igen
+	if err == nil || strings.Contains(err.Error(), "not a git repository") {
+		c.gitMu.Lock()
+		c.dirRepo[dir] = common
+		c.gitMu.Unlock()
+	}
 	return common
 }
 
@@ -242,6 +252,7 @@ func (c *Collector) refreshFast() {
 	}
 	servers := collectServers(paneByPID)
 	docker := collectDocker()
+	automation := collectAutomation(c.cfg.Automation.URL, c.cfg.Automation.CloudURL, c.cfg.Automation.Dir != "")
 
 	// Kopiera repos så att ögonblicksbilden kan ändras fritt
 	c.gitMu.Lock()
@@ -387,6 +398,7 @@ func (c *Collector) refreshFast() {
 	c.snap = Snapshot{
 		Time: time.Now(), Hostname: strings.Split(host, ".")[0], Repos: repos, Sessions: sessions,
 		Servers: servers, Docker: docker, Orchestrator: orch, Vault: c.cfg.Obsidian.Vault, Errors: errs,
+		Automation: automation,
 	}
 	if c.snap.Sessions == nil {
 		c.snap.Sessions = []Session{}
@@ -429,4 +441,10 @@ func containsInt(xs []int, x int) bool {
 		}
 	}
 	return false
+}
+
+func (c *Collector) repoCount() int {
+	c.gitMu.Lock()
+	defer c.gitMu.Unlock()
+	return len(c.repos)
 }
