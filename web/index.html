@@ -761,8 +761,7 @@ function parseClaude(text) {
   return { items: items.filter(x => x.role !== "info"), working };
 }
 
-// Enkel markdown för svaren: rubriker, fetstil, kod, listor och tabeller. Claude ritar tabeller med
-// ramtecken (│ ├ ┼ ─) och bryter långa celler över flera rader; de blir en riktig tabell.
+// Enkel markdown för svaren: rubriker, fetstil, kod, listor och tabeller.
 function md(t) {
   const inline = s => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
   const out = []; let list = false, table = null;
@@ -778,11 +777,9 @@ function md(t) {
     if (/^\s*[│|]/.test(l)) {
       const cells = l.trim().replace(/^[│|]|[│|]$/g, "").split(/[│|]/).map(c => c.trim());
       if (!table) { table = [cells]; newRow = true; continue; }
-      // En rad utan ny avgränsare fortsätter föregående rads celler
-      const last = table[table.length - 1];
-      if (!newRow && table.length > 1 && cells.length === last.length) last.forEach((c, i) => { if (cells[i]) last[i] = (c + " " + cells[i]).trim(); });
-      else table.push(cells);
-      newRow = false; continue;
+      // Texten kommer ur loggen som markdown: varje rad är en egen tabellrad
+      table.push(cells);
+      continue;
     }
     flush();
     const li = l.match(/^\s*[-*•] (.*)$/) || l.match(/^\s*\d+\. (.*)$/);
