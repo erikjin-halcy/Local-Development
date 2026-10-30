@@ -909,7 +909,8 @@ function renderAgents(v) {
     </div>`;
   }).join("");
   v.innerHTML = `<div class="toolbar">
-      <span class="seg">${[["öppen", "Öppna"], ["hanterad", "Hanterade"], ["ignorerad", "Ignorerade"], ["alla", "Alla"]].map(([k, l]) => `<button data-ashow="${k}" class="${show === k ? "on" : ""}">${l}</button>`).join("")}</span>
+      <span class="muted small">Visa fynd:</span>
+      <span class="seg" title="Filtrerar vilka fynd som visas under varje agent">${(all => [["öppen", "Öppna"], ["hanterad", "Hanterade"], ["ignorerad", "Ignorerade"], ["alla", "Alla"]].map(([k, l]) => `<button data-ashow="${k}" class="${show === k ? "on" : ""}">${l} <span class="muted">${k === "alla" ? all.length : all.filter(f => f.status === k).length}</span></button>`).join(""))(agentsData.agents.flatMap(a => a.state?.findings || []))}</span>
       <button class="sm" data-act="agentNew">+ Ny agent</button>
       <button class="sm" data-act="agentEdit" data-name="rules" title="${esc(agentsData.rules)}">Företagsregler</button>
       <span class="spacer"></span><span class="muted small">Agenter granskar dina repos i bakgrunden med Claude Code och skickar fynd till orkestratorn.</span>

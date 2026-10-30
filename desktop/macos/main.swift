@@ -228,6 +228,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { webView.reload() }
 
+    // MARK: JavaScript-dialoger
+    // WKWebView visar inte alert/confirm/prompt själv; utan dessa svarar confirm() alltid "nej"
+    // (t.ex. "Ta bort jobbet?" i Local-Automation). De visas som vanliga macOS-dialoger på fönstret.
+
+    func dialog(_ message: String, frame: WKFrameInfo, buttons: [String], input: String? = nil, done: @escaping (Int, String?) -> Void) {
+        let alert = NSAlert()
+        alert.messageText = message
+        if let host = frame.request.url?.host, let port = frame.request.url?.port, port != self.port {
+            alert.informativeText = "Från \(host):\(port)"
+        }
+        buttons.forEach { alert.addButton(withTitle: $0) }
+        var field: NSTextField?
+        if let input {
+            let f = NSTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
+            f.stringValue = input
+            alert.accessoryView = f
+            field = f
+        }
+        alert.beginSheetModal(for: window) { resp in
+            done(resp == .alertFirstButtonReturn ? 0 : 1, field?.stringValue)
+        }
+        if let field { window.makeFirstResponder(field) }
+    }
+
+    func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
+        dialog(message, frame: frame, buttons: ["OK"]) { _, _ in completionHandler() }
+    }
+
+    func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
+        dialog(message, frame: frame, buttons: ["OK", "Avbryt"]) { i, _ in completionHandler(i == 0) }
+    }
+
+    func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?,
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (String?) -> Void) {
+        dialog(prompt, frame: frame, buttons: ["OK", "Avbryt"], input: defaultText ?? "") { i, text in completionHandler(i == 0 ? text : nil) }
+    }
+
     // MARK: menyer
 
     @objc func reload() { webView.reload() }
@@ -276,7 +315,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                     item("Öppna i webbläsaren", #selector(openInBrowser), "o", [.command, .shift], target: self),
                     .separator()]
         for (i, (tab, title)) in [("overview", "Översikt"), ("tmux", "tmux"), ("servers", "Servrar"),
-                                  ("docker", "Docker"), ("orchestrator", "Orkestrator"), ("automation", "Automation")].enumerated() {
+                                  ("docker", "Docker"), ("orchestrator", "Orkestrator"), ("agents", "Agenter"), ("automation", "Automation")].enumerated() {
             let m = item(title, #selector(showTab(_:)), "\(i + 1)", target: self)
             m.representedObject = tab
             view.append(m)
