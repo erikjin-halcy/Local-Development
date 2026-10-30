@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"syscall"
@@ -353,7 +354,7 @@ func paneCmd(c client, pos []string, flags map[string]string) {
 					if p.Worktree != nil {
 						branch = p.Worktree.Repo + "@" + p.Worktree.Branch
 					}
-					fmt.Printf("%-5s %s:%d %-22s %-10s %-14s %-30s %s\n", p.ID, s.Name, w.Index, trunc(w.Name, 22), p.Command, p.Role, branch, trunc(p.Title, 40))
+					fmt.Printf("%-5s %s:%d %-22s %-10s %-14s %-30s %s\n", p.ID, s.Name, w.Index, trunc(w.Name, 22), progName(p.Command), p.Role, branch, trunc(p.Title, 40))
 				}
 			}
 		}
@@ -405,7 +406,7 @@ func printStatus(s state.Snapshot, all bool) {
 	for _, se := range s.Sessions {
 		for _, w := range se.Windows {
 			for _, p := range w.Panes {
-				paneInfo[p.ID] = fmt.Sprintf("%s(%s:%s %s)", p.ID, se.Name, w.Name, p.Command)
+				paneInfo[p.ID] = fmt.Sprintf("%s(%s:%s %s)", p.ID, se.Name, w.Name, progName(p.Command))
 			}
 		}
 	}
@@ -620,4 +621,14 @@ func autostart(cfg config.Config, remove bool) error {
 	}
 	fmt.Printf("devctl startar nu vid inloggning: http://localhost:%d\n", cfg.Port)
 	return nil
+}
+
+var versionRe = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
+
+// progName: Claude Code körs som en process som heter som sin version (t.ex. 2.1.314).
+func progName(cmd string) string {
+	if versionRe.MatchString(cmd) || strings.EqualFold(cmd, "claude") {
+		return "Claude"
+	}
+	return cmd
 }

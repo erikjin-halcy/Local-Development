@@ -358,7 +358,9 @@ const findPane = id => panes().find(x => x.p.id === id);
 const serverByPort = port => S.servers.find(s => s.port === port);
 const hostname = () => S.hostname;
 const short = p => String(p || "").replace(/^\/Users\/[^/]+/, "~");
-const paneLabel = p => { const t = p.title && p.title !== hostname() ? p.title : ""; return t || p.command; };
+// Claude Code körs som en process som heter som sin version (t.ex. 2.1.314)
+const progName = cmd => /^\d+\.\d+\.\d+$/.test(cmd || "") || /^claude$/i.test(cmd || "") ? "Claude" : cmd;
+const paneLabel = p => { const t = p.title && p.title !== hostname() ? p.title : ""; return t || progName(p.command); };
 
 function render() {
   const nW = S.repos.reduce((a, r) => a + r.worktrees.filter(w => !w.missing).length, 0);
@@ -390,7 +392,7 @@ function renderBanner() {
 function paneChip(id) {
   const x = findPane(id); if (!x) return "";
   const orch = x.w.kind === "global-orchestrator" || x.p.role === "orchestrator";
-  return `<span class="chip pchip ${orch ? "orchp" : ""}" data-pane="${esc(id)}" title="tmux-pane ${esc(id)} i ${esc(x.s.name)}:${x.w.index} (${esc(x.w.name)}) kör ${esc(x.p.command)}${x.p.title && x.p.title !== hostname() ? " · " + esc(x.p.title) : ""}. Klicka för att se och skriva i den.">▣ ${esc(x.p.command)} · ${esc(x.s.name)}:${x.w.index}</span>`;
+  return `<span class="chip pchip ${orch ? "orchp" : ""}" data-pane="${esc(id)}" title="tmux-pane ${esc(id)} i ${esc(x.s.name)}:${x.w.index} (${esc(x.w.name)}) kör ${esc(progName(x.p.command))}${x.p.title && x.p.title !== hostname() ? " · " + esc(x.p.title) : ""}. Klicka för att se och skriva i den.">▣ ${esc(progName(x.p.command))} · ${esc(x.s.name)}:${x.w.index}</span>`;
 }
 function serverChip(port) {
   const s = serverByPort(port); if (!s) return "";
@@ -630,11 +632,11 @@ function renderWindow(w, depth, s, kids) {
   const ps = w.panes.map(p => {
     const L = p.left / w.width * 100, T = p.top / w.height * 100, W = p.width / w.width * 100, H = p.height / w.height * 100;
     return `<div class="pane ${p.active ? "active" : ""} ${inspect?.id === p.id ? "sel" : ""} role-${esc((p.role || "").split("-")[0])}" data-pane="${esc(p.id)}"
-      style="left:${L}%;top:${T}%;width:calc(${W}% - 2px);height:calc(${H}% - 2px)" title="${esc(p.id)} · ${esc(p.command)} · ${esc(p.path)}">
+      style="left:${L}%;top:${T}%;width:calc(${W}% - 2px);height:calc(${H}% - 2px)" title="${esc(p.id)} · ${esc(progName(p.command))} · ${esc(p.path)}">
       ${p.role ? `<div class="role">${esc(p.role)}</div>` : ""}
       <div class="pt">${esc(paneLabel(p))}</div>
       ${p.worktree ? `<div class="br">⎇ ${esc(p.worktree.repo)}@${esc(p.worktree.branch)}</div>` : ""}
-      <div class="pc">${esc(p.id)} · ${esc(p.command)}${p.ports?.length ? " · :" + p.ports.join(" :") : ""}</div>
+      <div class="pc">${esc(p.id)} · ${esc(progName(p.command))}${p.ports?.length ? " · :" + p.ports.join(" :") : ""}</div>
     </div>`;
   }).join("");
   return `<div class="window ${w.active ? "active" : ""} ${esc(w.kind)} ${depth ? "child" : ""}">
@@ -672,7 +674,7 @@ function renderTree(sessActs) {
       ${p.role ? `<span class="badge orch">${esc(p.role)}</span>` : ""}<b>${esc(paneLabel(p))}</b>
       ${p.worktree ? `<span class="badge ok">⎇ ${esc(p.worktree.repo)}@${esc(p.worktree.branch)}</span>` : ""}
       ${(p.ports || []).map(port => `<span class="badge">:${port}</span>`).join("")}
-      <span class="tsub">${esc(p.id)} · ${esc(p.command)} · ${esc(short(p.path))}</span></div></li>`).join("")}${(kids[w.id] || []).map(c => node(c, kids)).join("")}</ul>`}</li>`;
+      <span class="tsub">${esc(p.id)} · ${esc(progName(p.command))} · ${esc(short(p.path))}</span></div></li>`).join("")}${(kids[w.id] || []).map(c => node(c, kids)).join("")}</ul>`}</li>`;
   return `<div class="card tree"><ul>${S.sessions.map(s => { const { kids } = windowForest(s); return `<li>
     <div class="trow">${tog(s.id)}<span>🗂</span><b>${esc(s.name)}</b>${s.attached ? `<span class="badge ok">attached</span>` : ""}<span class="tsub">${s.windows.length} fönster</span><span class="tacts">${sessActs(s)}</span></div>
     ${collapsed.has(s.id) ? "" : `<ul>${(kids[""] || []).map(w => node(w, kids)).join("")}</ul>`}</li>`; }).join("")}</ul></div>`;
@@ -902,7 +904,7 @@ function renderInspector() {
   const f = findPane(inspect.id);
   if (!f) { inspect = null; main.classList.remove("inspecting"); el.innerHTML = ""; return; }
   const { s, w, p } = f;
-  const meta = `${esc(s.name)} › ${w.index}:${esc(w.name)} › ${esc(p.id)}${p.role ? " (" + esc(p.role) + ")" : ""}<br>${esc(p.command)} · ${p.width}×${p.height}${p.ports?.length ? " · :" + p.ports.join(" :") : ""}<br>${esc(short(p.path))}${p.worktree ? `<br><span style="color:var(--ok)">⎇ ${esc(p.worktree.repo)}@${esc(p.worktree.branch)}</span>` : ""}`;
+  const meta = `${esc(s.name)} › ${w.index}:${esc(w.name)} › ${esc(p.id)}${p.role ? " (" + esc(p.role) + ")" : ""}<br>${esc(progName(p.command))} · ${p.width}×${p.height}${p.ports?.length ? " · :" + p.ports.join(" :") : ""}<br>${esc(short(p.path))}${p.worktree ? `<br><span style="color:var(--ok)">⎇ ${esc(p.worktree.repo)}@${esc(p.worktree.branch)}</span>` : ""}`;
   if (el.dataset.key === p.id) { $("#iTitle").textContent = paneLabel(p); $("#iMeta").innerHTML = meta; return; }
   el.dataset.key = p.id;
   el.innerHTML = `<div class="row"><h2 id="iTitle">${esc(paneLabel(p))}</h2><button class="sm" id="iClose">✕</button></div>
