@@ -21,7 +21,8 @@ Flikar går att länka till direkt: `http://localhost:7878/#tmux`, `#servers`, `
 | se vad som körs på vilken branch | `devctl status` (`--all` för alla repos, `--json` för allt) |
 | se branches/commitgraf | `devctl graph <repo>` |
 | ny worktree | `devctl worktree add <repo> <branch> [--base main]` |
-| starta en Claude-worker på en branch | `devctl worker start <repo> <branch> [--task "…"]` |
+| starta en Claude-worker på en branch (ny pane i repots session, titel "<repo> · <feature>") | `devctl worker start <repo> <branch> --feature "…" [--task "…"]` |
+| stänga en worker-pane efter användarens ja / skriva sessionsrapport | `devctl report %ID` och sedan `devctl pane close %ID --yes` (se skillen tmux) |
 | lista/läsa/skriva till tmux-panes | `devctl pane list`, `devctl pane capture %ID -n 120`, `devctl pane send %ID "text"` |
 | anteckning för en branch i Obsidian | `devctl note <repo> <branch> [--open]` |
 | dagens utvecklingslogg i Obsidian | `devctl log [--open]` |

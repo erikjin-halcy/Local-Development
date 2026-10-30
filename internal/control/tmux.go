@@ -78,7 +78,7 @@ func (c *Controller) actions() map[string]action {
 		"archive": c.archive, "open_privacy": c.openPrivacy, "run_action": c.runAction, "edit_actions": c.editActions, "repo_note": c.repoNote, "sync_sessions": c.syncSessionsAction,
 		"workflow_status": c.workflowStatus, "workflow_cancel": c.workflowCancel, "ci_rerun": c.ciRerun, "ci_dispatch": c.ciDispatch,
 		"kill_processes": c.killProcesses, "open_parked": c.openParked, "orch_history": c.orchHistory, "orchestrator_reload": c.orchestratorReload,
-		"commits": c.commits, "cloud_push": c.cloudPush, "cloud_status": c.cloudStatus, "open": c.openTarget, "stop_port": c.stopPort, "sessions": c.sessionsAction, "summarize": c.summarize,
+		"commits": c.commits, "pane_close": c.paneClose, "report": c.report, "cloud_push": c.cloudPush, "cloud_status": c.cloudStatus, "open": c.openTarget, "stop_port": c.stopPort, "sessions": c.sessionsAction, "summarize": c.summarize,
 		"agents": c.agentsList, "agent_run": c.agentRun, "agent_finding": c.agentFinding, "agent_notify": c.agentNotify,
 		"agent_new": c.agentNew, "agent_edit": c.agentEdit, "agent_toggle": c.agentToggle, "agent_settings": c.agentSettings, "changes": c.changes, "diff": c.diff, "worker_start": c.workerStart,
 		"open_worktree": c.openWorktree, "graph": c.graph, "editor": c.editor,
@@ -263,6 +263,17 @@ func (c *Controller) kill(a Args) (any, error) {
 	cmd := map[string]string{"session": "kill-session", "window": "kill-window", "pane": "kill-pane"}[a.S("kind")]
 	if cmd == "" || a.S("target") == "" {
 		return nil, errors.New("ogiltigt kill-anrop")
+	}
+	// Huvudpanen stängs bara när användaren uttryckligen ber om just det (force)
+	if out, _ := tmuxOut("list-panes", "-s", "-t", a.S("target"), "-F", "#{@role}"); a.S("kind") != "session" && !a.B("force", false) {
+		if a.S("kind") == "pane" {
+			out, _ = tmuxOut("display-message", "-p", "-t", a.S("target"), "#{@role}")
+		}
+		for _, r := range strings.Fields(out) {
+			if r == "main" {
+				return nil, errors.New("det här är huvudpanen (@role main); den stängs bara om användaren uttryckligen ber om det")
+			}
+		}
 	}
 	_, err := tmux(cmd, "-t", a.S("target"))
 	return nil, err

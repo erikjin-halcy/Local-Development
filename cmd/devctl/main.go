@@ -35,7 +35,7 @@ const usage = `devctl – kontrollpanel för lokalt utvecklingsarbete
   devctl summarize [all|<namn|%%pane>]   vad sessionerna håller på med
   devctl ci <repo> [--branch b]  GitHub Actions-status
   devctl status [--all] [--json] repos, worktrees, panes, servrar och containrar
-  devctl worker start <repo> <branch> [--base b] [--task "..."] [--cmd c]
+  devctl worker start <repo> <branch> [--feature f] [--base b] [--task "..."]   ny pane i repots session
   devctl worktree add <repo> <branch> [--base b] [--path p]
   devctl worktree rm <sökväg> [--force]
   devctl pane list | send <%%id> <text> | keys <%%id> <tangenter…> | capture <%%id> [-n rader]
@@ -50,6 +50,8 @@ const usage = `devctl – kontrollpanel för lokalt utvecklingsarbete
   devctl park "<titel>" …        samma som todo add (används av skillen parkera)
   devctl agents [list] | run <namn> [--repo r] | findings [namn] | resolve|ignore <id>   agenter i devctl
   devctl orchestrator [--reload] starta (eller visa) den globala orkestratorn; --reload laddar nya instruktioner
+  devctl pane close <%%id> --yes       avsluta Claude och stäng en worker-pane (aldrig huvudpanen)
+  devctl report <%%id> [--feature f]   utkast till sessionsrapport i Obsidian (innan panen stängs)
   devctl brief                  orkestratorns systemprompt
   devctl autostart [--remove]    starta servern vid inloggning (launchd)
   devctl config                  sökväg till konfigurationen
@@ -103,9 +105,9 @@ func main() {
 		printStatus(snap, all)
 	case "worker":
 		if len(pos) < 3 || pos[0] != "start" {
-			fail(errors.New("användning: devctl worker start <repo> <branch> [--base b] [--task t]"))
+			fail(errors.New("användning: devctl worker start <repo> <branch> [--feature f] [--base b] [--task t] [--session s]"))
 		}
-		a := map[string]any{"repo": pos[1], "branch": pos[2], "base": flags["base"], "task": flags["task"]}
+		a := map[string]any{"repo": pos[1], "branch": pos[2], "base": flags["base"], "task": flags["task"], "feature": flags["feature"], "session": flags["session"]}
 		if v, ok := flags["cmd"]; ok {
 			a["cmd"] = v
 		}
@@ -244,6 +246,13 @@ func main() {
 		must(err)
 		o := res.(map[string]any)
 		fmt.Printf("Orkestratorn körs i tmux-sessionen %v, pane %v.\nAttacha: tmux attach -t %v   eller chatta i http://localhost:%d\n", o["session"], o["pane"], o["session"], cfg.Port)
+	case "report":
+		if len(pos) < 1 {
+			fail(errors.New("användning: devctl report <%id> [--feature f] [--repo r]"))
+		}
+		res, err := c.do("report", map[string]any{"pane": pos[0], "feature": flags["feature"], "repo": flags["repo"]})
+		must(err)
+		fmt.Println(res.(map[string]any)["path"])
 	case "brief":
 		res, err := c.do("brief", nil)
 		must(err)
@@ -282,7 +291,7 @@ func abs(p string) string {
 func parse(args []string) ([]string, map[string]string) {
 	var pos []string
 	flags := map[string]string{}
-	boolean := map[string]bool{"json": true, "all": true, "force": true, "open": true, "remove": true, "yes": true, "reload": true}
+	boolean := map[string]bool{"json": true, "all": true, "force": true, "open": true, "remove": true, "yes": true, "reload": true, "main": true}
 	// (--context, --background och --from tar värden)
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -407,7 +416,7 @@ func printResult(res any, err error) {
 
 func paneCmd(c client, pos []string, flags map[string]string) {
 	if len(pos) == 0 {
-		fail(errors.New("användning: devctl pane list | send | keys | capture"))
+		fail(errors.New("användning: devctl pane list | send | keys | capture | close"))
 	}
 	switch pos[0] {
 	case "list":
@@ -457,6 +466,13 @@ func paneCmd(c client, pos []string, flags map[string]string) {
 		res, err := c.do("capture", map[string]any{"pane": pos[1], "lines": n})
 		must(err)
 		fmt.Print(strings.TrimRight(res.(map[string]any)["text"].(string), "\n") + "\n")
+	case "close":
+		if len(pos) < 2 {
+			fail(errors.New("användning: devctl pane close <%id> --yes [--main]"))
+		}
+		_, yes := flags["yes"]
+		_, main := flags["main"]
+		printResult(c.do("pane_close", map[string]any{"pane": pos[1], "confirm": yes, "main": main}))
 	default:
 		fail(fmt.Errorf("okänt pane-kommando: %s", pos[0]))
 	}

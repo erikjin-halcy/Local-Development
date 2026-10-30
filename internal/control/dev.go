@@ -147,7 +147,9 @@ func newWindowIn(session, name, cwd string) (wid, pane string, err error) {
 	return p[0], p[1], nil
 }
 
-// workerStart skapar (vid behov) en worktree för branchen och ett tmux-fönster med en Claude-worker där.
+// workerStart skapar (vid behov) en worktree för branchen och en pane med en Claude-worker där, enligt
+// tmux-reglerna: i repots egen session (som skapas om den saknas), i featurens fönster om det finns,
+// annars i ett nytt fönster, med titeln "<repo> · <feature>".
 func (c *Controller) workerStart(a Args) (any, error) {
 	res, err := c.worktreeAdd(a)
 	if err != nil {
@@ -155,34 +157,55 @@ func (c *Controller) workerStart(a Args) (any, error) {
 	}
 	wt := res.(map[string]any)
 	path, branch, repo := wt["path"].(string), wt["branch"].(string), wt["repo"].(string)
+	feature := strings.Join(strings.Fields(a.S("feature")), " ")
+	if feature == "" {
+		feature = branch
+	}
 	session := a.S("session")
 	if session == "" {
-		session = c.cfg.Session
+		session = repo
 	}
-	wid, pane, err := newWindowIn(session, repo+"/"+branch, path)
-	if err != nil {
-		return nil, err
+	wid, pane := "", ""
+	// Finns redan ett fönster för featuren i sessionen? Lägg panen där.
+	if out, err := tmuxOut("list-panes", "-s", "-t", "="+session, "-F", fields("window_id", "@feature")); err == nil {
+		for _, l := range strings.Split(out, "\n") {
+			if p := strings.Split(l, "\x1f"); len(p) == 2 && p[1] == feature {
+				wid = p[0]
+				break
+			}
+		}
 	}
-	_, _ = tmux("set-option", "-w", "-t", wid, "automatic-rename", "off")
-	_, _ = tmux("set-option", "-w", "-t", wid, "@kind", "worker")
-	_, _ = tmux("set-option", "-p", "-t", pane, "@role", "worker")
-	_, _ = tmux("select-pane", "-t", pane, "-T", branch)
-	if o := c.col.Snapshot().Orchestrator; o != nil {
-		_ = setParent(wid, o.Window)
+	if wid != "" {
+		if pane, err = tmuxOut("split-window", "-d", "-t", wid, "-c", path, "-P", "-F", "#{pane_id}"); err != nil {
+			return nil, err
+		}
+		_, _ = tmux("select-layout", "-t", wid, "tiled")
+	} else {
+		if wid, pane, err = newWindowIn(session, feature, path); err != nil {
+			return nil, err
+		}
+		_, _ = tmux("set-option", "-w", "-t", wid, "automatic-rename", "off")
+		_, _ = tmux("set-option", "-w", "-t", wid, "allow-rename", "off")
+		_, _ = tmux("set-option", "-w", "-t", wid, "@kind", "worker")
 	}
+	title := repo + " · " + feature
+	for k, v := range map[string]string{"@role": "worker", "@repo": repo, "@feature": feature, "@name": title, "allow-set-title": "off"} {
+		_, _ = tmux("set-option", "-p", "-t", pane, k, v)
+	}
+	_, _ = tmux("select-pane", "-t", pane, "-T", title)
 	cmd := c.cfg.WorkerCmd
 	if v, ok := a["cmd"].(string); ok {
 		cmd = strings.TrimSpace(v)
 	}
 	if task := strings.TrimSpace(a.Raw("task")); task != "" && cmd != "" && strings.Fields(cmd)[0] == "claude" {
-		file, err := writeCache(fmt.Sprintf("task-%s.md", strings.TrimPrefix(wid, "@")), task)
+		file, err := writeCache(fmt.Sprintf("task-%s.md", strings.TrimPrefix(pane, "%")), task)
 		if err != nil {
 			return nil, err
 		}
 		cmd += ` "$(cat ` + shellQuote(file) + `)"`
 	}
 	_ = runIn(pane, cmd)
-	return map[string]any{"window": wid, "pane": pane, "path": path, "branch": branch, "repo": repo, "session": session}, nil
+	return map[string]any{"window": wid, "pane": pane, "path": path, "branch": branch, "repo": repo, "session": session, "title": title}, nil
 }
 
 func (c *Controller) openWorktree(a Args) (any, error) {
@@ -606,8 +629,12 @@ föreslå åtgärd. Ändra ingen kod utan godkännande. Markera med `+"`devctl a
 `+"`devctl agents`"+` visar alla agenter; `+"`devctl agents run <agent> [--repo r]`"+` kör en direkt.
 
 ## Göra saker
-- `+"`devctl worker start <repo> <branch> [--base main] [--task \"...\"]`"+` – skapar worktree om den saknas
-  och ett tmux-fönster (under ditt fönster) där en Claude-worker får uppgiften.
+- `+"`devctl worker start <repo> <branch> --feature \"<feature>\" [--base main] [--task \"...\"]`"+` – skapar worktree
+  om den saknas och en ny pane i repots tmux-session (fönstret för featuren, annars ett nytt), med titeln
+  "<repo> · <feature>", där en Claude-worker får uppgiften. Feature skrivs kort som en PR-titel.
+- `+"`devctl pane close %%ID --yes`"+` – avslutar Claude och stänger en worker-pane. Vägrar huvudpanen (@role main).
+- `+"`devctl report %%ID`"+` – skriver ett utkast till sessionsrapport i Obsidian (git-läge och sammanfattning ifyllt)
+  och skriver ut sökvägen; fyll sedan i Gjort, Kvar och Bra att veta i filen.
 - `+"`devctl worktree add <repo> <branch> [--base x]`"+` / `+"`devctl worktree rm <sökväg>`"+`
 - `+"`devctl pane send %%ID \"text\"`"+` / `+"`devctl pane keys %%ID Escape`"+`
 - `+"`devctl note <repo> <branch>`"+` – skapar branchens anteckning i Obsidian och skriver ut sökvägen;
@@ -632,6 +659,21 @@ rapporterar ett problem som pågående, kontrollera det aktuella läget:
 - sessioner: `+"`devctl status`"+` och vad panen visar längst ned (pågår något nu?)
 Säg vad du kontrollerade och när ("felet i %%42 är från 11:20; en senare deploy 12:30 lyckades").
 Kan du inte kontrollera, säg att det är vad panen visar och att det kan vara inaktuellt.
+
+## tmux-regler (skillen tmux)
+Följ skillen tmux (~/.claude/skills/tmux/SKILL.md) när du skapar, döper om, flyttar eller stänger
+sessioner, fönster och panes. Kortfattat:
+- Ett repo per session och fönster; sessionen heter som repot. Varje session har en huvudpane
+  (@role main, "<repo> · huvud") som du aldrig stänger om inte användaren uttryckligen ber om just det.
+- Ny uppgift: finns redan en instans för samma repo och feature (`+"`devctl sessions`"+`, `+"`devctl pane list`"+`),
+  skicka uppgiften dit. Annars `+"`devctl worker start`"+` (ovan), som skapar en ny pane i repots session.
+  Säg till användaren var panen ligger (session, titel, %%id).
+- När uppgiften är klar: kontrollera läget (`+"`devctl summarize %%ID`"+`, git status, ej pushat) och fråga
+  användaren uttryckligen, en pane i taget med namn och %%id, om panen får stängas. Tystnad, "ok" om något
+  annat eller ett ja för en annan pane är inget ja.
+- Efter ett ja: `+"`devctl report %%ID`"+` först (medan underlaget finns), fyll i rapporten, sedan
+  `+"`devctl pane close %%ID --yes`"+`. Ta inte bort worktree eller branch utan att användaren ber om det.
+- Flytta aldrig befintliga panes, fönster eller sessioner utan användarens ja; föreslå i stället.
 
 ## Regler
 - En worker per worktree. Låt aldrig två workers ändra samma filer.
