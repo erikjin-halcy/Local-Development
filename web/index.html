@@ -198,12 +198,13 @@ pre.diff { white-space: pre; }
 #qchat.open { display: flex; }
 #qchat .qmsgs { overflow: auto; padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
 #qchat textarea { margin: 0 12px 12px; width: auto; }
-.commits { display: flex; flex-direction: column; overflow: auto; flex: 1; }
-.commit-row { display: flex; gap: 6px; align-items: stretch; height: 46px; }
+/* Rullbar i sidled: hela meddelandet och alla branches syns */
+.commits { display: flex; flex-direction: column; overflow: auto; flex: 1; overscroll-behavior-x: contain; }
+.commit-row { display: flex; gap: 6px; align-items: stretch; height: 46px; width: max-content; min-width: 100%; }
 .commit-row .cbody { padding: 4px 0; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
-.commit-row .csubj { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.commit-row .cmeta { font-size: 11.5px; color: var(--muted); display: flex; gap: 4px; flex-wrap: nowrap; align-items: center; overflow: hidden; white-space: nowrap; }
-.commit-row .cmeta .badge { flex: none; max-width: 170px; overflow: hidden; text-overflow: ellipsis; }
+.commit-row .csubj { font-size: 13px; white-space: nowrap; padding-right: 12px; }
+.commit-row .cmeta { font-size: 11.5px; color: var(--muted); display: flex; gap: 4px; flex-wrap: nowrap; align-items: center; white-space: nowrap; padding-right: 12px; }
+.commit-row .cmeta .badge { flex: none; }
 .commit-row.unpushed .csubj { color: var(--warn); }
 /* hjälp */
 dialog#help { width: min(860px, 94vw); max-height: 88vh; }
@@ -1129,8 +1130,7 @@ function commitSvg(L, width, H) {
 function refChips(refs) {
   const order = r => r.startsWith("HEAD") ? 0 : r.startsWith("tag: ") ? 2 : r.includes("/") ? 3 : 1;
   const sorted = [...refs].sort((a, b) => order(a) - order(b));
-  const shown = sorted.slice(0, 2).map(refChip).join(" ");
-  return shown + (sorted.length > 2 ? ` <span class="badge" title="${esc(sorted.slice(2).join("\n"))}">+${sorted.length - 2}</span>` : "");
+  return sorted.map(refChip).join(" ");
 }
 function refChip(ref) {
   if (ref.startsWith("HEAD -> ")) return `<span class="badge ok" title="Utcheckad branch">● ${esc(ref.slice(8))}</span>`;
@@ -1159,7 +1159,7 @@ async function renderCommits(el) {
     <div class="commits">${inspect.rows.map((c, i) => `<div class="commit-row ${c.unpushed ? "unpushed" : ""}">
       ${commitSvg(layout[i], width, H)}
       <div class="cbody">
-        <div class="csubj">${esc(c.subject)} ${c.unpushed ? `<span class="badge warn" title="Finns bara lokalt, inte på någon remote">ej pushad</span>` : ""}</div>
+        <div class="csubj" title="${esc(c.subject)}">${esc(c.subject)} ${c.unpushed ? `<span class="badge warn" title="Finns bara lokalt, inte på någon remote">ej pushad</span>` : ""}</div>
         <div class="cmeta"><span class="mono">${esc(c.hash)}</span> · ${esc(c.when)} · ${esc(c.author)} ${refChips(c.refs)}</div>
       </div></div>`).join("")}</div>
     ${inspect.more ? `<button class="sm" id="cMore" style="align-self:flex-start">Visa fler</button>` : ""}`;
