@@ -439,9 +439,20 @@ func (c *Controller) DailyLog() (string, error) {
 	}
 	snap := c.col.Snapshot()
 	now := time.Now()
+	// Repon med material utanför arbetsvalvet (obsidian.repoDirs) får en egen dagslogg där och nämns
+	// inte i arbetsvalvets logg
+	// (de privata först, så att inget försvinner ur arbetsvalvets logg innan det finns där)
+	for _, root := range config.PrivateRoots(c.cfg) {
+		p := filepath.Join(root, c.cfg.Obsidian.LogDir, now.Format("2006-01-02")+".md")
+		if err := writeLog(p, logSection(c.cfg, snap, now, func(repo string) bool { return config.PrivateRoot(c.cfg, repo) == root }), now); err != nil {
+			return "", err
+		}
+	}
 	path := filepath.Join(c.cfg.Obsidian.Vault, c.cfg.Obsidian.LogDir, now.Format("2006-01-02")+".md")
-	section := logSection(c.cfg, snap, now)
+	return path, writeLog(path, logSection(c.cfg, snap, now, func(repo string) bool { return config.PrivateRoot(c.cfg, repo) == "" }), now)
+}
 
+func writeLog(path, section string, now time.Time) error {
 	old, err := os.ReadFile(path)
 	var out string
 	if err == nil && strings.Contains(string(old), logStart) && strings.Contains(string(old), logEnd) {
@@ -454,18 +465,19 @@ func (c *Controller) DailyLog() (string, error) {
 		out = fmt.Sprintf("---\ndate: %s\ntags: [dev-logg]\n---\n# Dev-logg %s\n\n%s\n\n## Mina anteckningar\n\n", now.Format("2006-01-02"), now.Format("2006-01-02"), section)
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return "", err
+		return err
 	}
-	return path, os.WriteFile(path, []byte(out), 0o644)
+	return os.WriteFile(path, []byte(out), 0o644)
 }
 
-func logSection(cfg config.Config, snap state.Snapshot, now time.Time) string {
+// logSection: loggen för de repon som include godtar (servrar, PR:er och tmux-sessioner likaså).
+func logSection(cfg config.Config, snap state.Snapshot, now time.Time, include func(repo string) bool) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\n_Uppdaterad %s av devctl._\n\n## Branches som rörts idag\n", logStart, now.Format("15:04"))
 	midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	any := false
 	for _, r := range snap.Repos {
-		if !r.Active {
+		if !r.Active || !include(r.Name) {
 			continue
 		}
 		out, err := git(r.Path, "log", "--all", "--source", "--since="+midnight.Format(time.RFC3339), "--format=%h%x1f%s%x1f%S")
@@ -503,8 +515,7 @@ func logSection(cfg config.Config, snap state.Snapshot, now time.Time) string {
 			line := "- **" + br + "**"
 			if n := state.NotePath(cfg, r.Name, br); n != "" {
 				if _, err := os.Stat(n); err == nil {
-					rel, _ := filepath.Rel(cfg.Obsidian.Vault, n)
-					line += " ([[" + strings.TrimSuffix(rel, ".md") + "|anteckning]])"
+					line += " ([[" + strings.TrimSuffix(filepath.Base(n), ".md") + "|anteckning]])"
 				}
 			}
 			if len(subjects) > 0 {
@@ -534,6 +545,9 @@ func logSection(cfg config.Config, snap state.Snapshot, now time.Time) string {
 	b.WriteString("\n## Öppna PR:er\n")
 	anyPR := false
 	for _, r := range snap.Repos {
+		if !include(r.Name) {
+			continue
+		}
 		for _, p := range r.PRs {
 			anyPR = true
 			draft := ""
@@ -549,7 +563,7 @@ func logSection(cfg config.Config, snap state.Snapshot, now time.Time) string {
 
 	b.WriteString("\n## Igång just nu\n")
 	for _, s := range snap.Servers {
-		if s.App || s.Worktree == nil {
+		if s.App || s.Worktree == nil || !include(s.Worktree.Repo) {
 			continue
 		}
 		fmt.Fprintf(&b, "- :%d %s (%s) — %s@%s\n", s.Port, s.Kind, s.Process, s.Worktree.Repo, s.Worktree.Branch)
@@ -562,7 +576,15 @@ func logSection(cfg config.Config, snap state.Snapshot, now time.Time) string {
 	}
 	fmt.Fprintf(&b, "- %d containrar igång (%s)\n", running, snap.Docker.Context)
 	var sess []string
+	repoNames := map[string]bool{}
+	for _, r := range snap.Repos {
+		repoNames[r.Name] = true
+	}
 	for _, s := range snap.Sessions {
+		// En session som heter som ett repo hör till det repot
+		if (repoNames[s.Name] && !include(s.Name)) || (!repoNames[s.Name] && !include("")) {
+			continue
+		}
 		sess = append(sess, fmt.Sprintf("%s (%d fönster)", s.Name, len(s.Windows)))
 	}
 	if len(sess) > 0 {

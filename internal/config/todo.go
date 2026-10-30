@@ -39,6 +39,23 @@ func TodoDir(cfg Config) string {
 
 func TodoIndex(cfg Config) string { return filepath.Join(TodoDir(cfg), "To do.md") }
 
+// todoDirs: arbetsvalvets To do-mapp och en per privat rot (repon i obsidian.repoDirs), som har egna listor.
+func todoDirs(cfg Config) []string {
+	out := []string{TodoDir(cfg)}
+	for _, r := range PrivateRoots(cfg) {
+		out = append(out, filepath.Join(r, todoFolder))
+	}
+	return out
+}
+
+// todoDirFor är mappen där ett repos uppgifter hamnar.
+func todoDirFor(cfg Config, repo string) string {
+	if r := PrivateRoot(cfg, repo); r != "" {
+		return filepath.Join(r, todoFolder)
+	}
+	return TodoDir(cfg)
+}
+
 var fmLine = regexp.MustCompile(`^([a-zåäö]+):\s?(.*)$`)
 
 func readTodo(path string) (Todo, bool) {
@@ -86,7 +103,11 @@ func readTodo(path string) (Todo, bool) {
 
 // Todos läser alla uppgifter, öppna först (äldst först), sedan klara (senast klara först).
 func Todos(cfg Config) []Todo {
-	files, _ := filepath.Glob(filepath.Join(TodoDir(cfg), "*.md"))
+	var files []string
+	for _, d := range todoDirs(cfg) {
+		f, _ := filepath.Glob(filepath.Join(d, "*.md"))
+		files = append(files, f...)
+	}
 	var out []Todo
 	for _, f := range files {
 		if filepath.Base(f) == "To do.md" {
@@ -125,7 +146,7 @@ func AddTodo(cfg Config, title, repo, context, background, source string) (Todo,
 	if r := []rune(name); len(r) > 70 {
 		name = strings.TrimSpace(string(r[:70]))
 	}
-	dir := TodoDir(cfg)
+	dir := todoDirFor(cfg, repo)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return t, err
 	}
@@ -220,17 +241,49 @@ const todoStart, todoEnd = "<!-- devctl:todo:start -->", "<!-- devctl:todo:end -
 
 var indexItem = regexp.MustCompile(`^- \[( |x|X|/)\] \[\[([^\]|]+)(?:\|[^\]]*)?\]\]`)
 
-// SyncTodos för över avbockningar från listan till sidorna och skriver om listan.
+// SyncTodos för över avbockningar från listorna till sidorna och skriver om listorna (en per mapp).
 func SyncTodos(cfg Config) error {
-	index := TodoIndex(cfg)
-	todos := Todos(cfg)
+	all := Todos(cfg)
+	for i, dir := range todoDirs(cfg) {
+		if i > 0 {
+			if _, err := os.Stat(dir); err != nil {
+				continue // ingen privat To do än
+			}
+		}
+		var mine []Todo
+		for _, t := range all {
+			if filepath.Dir(t.File) == dir {
+				mine = append(mine, t)
+			}
+		}
+		last := "todo-index.md"
+		if i > 0 {
+			last = fmt.Sprintf("todo-index-%d.md", i)
+		}
+		if err := syncTodoDir(cfg, dir, mine, filepath.Join(CacheDir(), last)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func syncTodoDir(cfg Config, dir string, todos []Todo, lastPath string) error {
+	index := filepath.Join(dir, "To do.md")
+	reread := func() []Todo {
+		var out []Todo
+		for _, t := range Todos(cfg) {
+			if filepath.Dir(t.File) == dir {
+				out = append(out, t)
+			}
+		}
+		return out
+	}
 	byName := map[string]Todo{}
 	for _, t := range todos {
 		byName[strings.TrimSuffix(filepath.Base(t.File), ".md")] = t
 	}
 	old, _ := os.ReadFile(index)
 	// Bara ändringar som användaren gjort i listan förs över: jämför med det devctl senast skrev
-	lastPath := filepath.Join(CacheDir(), "todo-index.md")
 	last, _ := os.ReadFile(lastPath)
 	current := ""
 	if i, j := strings.Index(string(old), todoStart), strings.Index(string(old), todoEnd); i >= 0 && j > i {
@@ -264,7 +317,7 @@ func SyncTodos(cfg Config) error {
 		}
 	}
 	if changed {
-		todos = Todos(cfg)
+		todos = reread()
 	}
 
 	var b strings.Builder

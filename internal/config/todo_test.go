@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -59,6 +60,22 @@ func TestTodos(t *testing.T) {
 			t.Errorf("todo done återställdes av listan: %+v", td)
 		}
 	}
+	// Ett repo med egen mapp (obsidian.repoDirs) får sin uppgift och lista där, inte i arbetsvalvet
+	priv := t.TempDir()
+	cfg.Obsidian.RepoDirs = map[string]string{"Hemligt": filepath.Join(priv, "Hemligt")}
+	h, err := AddTodo(cfg, "Privat uppgift", "Hemligt", "", "", "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Dir(h.File) != filepath.Join(priv, todoFolder) {
+		t.Errorf("privat uppgift i %s", h.File)
+	}
+	idx, _ = os.ReadFile(TodoIndex(cfg))
+	pidx, _ := os.ReadFile(filepath.Join(priv, todoFolder, "To do.md"))
+	if strings.Contains(string(idx), "Hemligt") || strings.Contains(string(idx), "Privat uppgift") || !strings.Contains(string(pidx), "Privat uppgift") {
+		t.Errorf("arbetsvalvets lista:\n%s\nprivata listan:\n%s", idx, pidx)
+	}
+	cfg.Obsidian.RepoDirs = nil
 	if OpenTodos(cfg)["devctl"] != 0 || OpenTodos(cfg)[""] != 0 {
 		t.Errorf("OpenTodos = %v", OpenTodos(cfg))
 	}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -117,3 +118,27 @@ func Load() (Config, error) {
 }
 
 func Path() string { return filepath.Join(Dir(), "config.json") }
+
+// PrivateRoot är mappen som håller ett repos material utanför arbetsvalvet (föräldern till dess
+// obsidian.repoDirs-mapp), eller "" om repot ligger i arbetsvalvet. Dagslogg och To do för sådana repon
+// skrivs där i stället för i arbetsvalvet.
+func PrivateRoot(cfg Config, repo string) string {
+	if d := cfg.Obsidian.RepoDirs[repo]; d != "" {
+		return filepath.Dir(Home(d))
+	}
+	return ""
+}
+
+// PrivateRoots är alla sådana mappar.
+func PrivateRoots(cfg Config) []string {
+	seen := map[string]bool{}
+	var out []string
+	for repo := range cfg.Obsidian.RepoDirs {
+		if r := PrivateRoot(cfg, repo); r != "" && !seen[r] {
+			seen[r] = true
+			out = append(out, r)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
