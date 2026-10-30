@@ -539,7 +539,7 @@ function renderServers(v) {
         <td><span class="badge k-${esc(s.kind)}">${esc(s.kind)}</span></td>
         <td class="mono">${esc(s.process)} <span class="muted small">${s.pids > 1 ? s.pids + " processer" : s.pid}</span></td>
         <td>${s.worktree ? `<span class="mono" style="color:var(--ok)">${esc(s.worktree.branch)}</span>` : `<span class="muted small mono">${esc(short(s.cwd))}</span>`}</td>
-        <td>${s.pane ? paneChip(s.pane) : s.container ? ctChip(s.container) : `<span class="muted small">—</span>`}</td>
+        <td>${s.pane ? paneChip(s.pane) : s.container ? ctChip(s.container) : `<span class="muted small" title="Startad utanför tmux, t.ex. i ett Terminal-fönster, i en editor eller av macOS">—</span>`}</td>
         <td class="cmd" title="${esc(s.command)}">${esc(s.command)}</td>
         <td class="acts">${s.ports.length === 1 ? `<button class="sm" data-open="http://localhost:${s.port}">Öppna</button>` : ""}
           ${s.pids > 1 && !s.app && s.kind !== "docker" ? `<button class="sm danger" data-act="killGroup" data-pids="${esc([...new Set(by[key(s)].map(x => x.pid))].join(","))}" title="Portarna ägs av ${s.pids} processer. Att stoppa processerna (SIGTERM) stänger alla ${s.ports.length} portar.">Stoppa ${s.pids} processer (${s.ports.length} portar)</button>` : ""}
@@ -560,7 +560,7 @@ function renderServers(v) {
       return `<div class="card"><div class="chead"><span class="cname">${esc(r)}</span>
         ${branches.map(b => `<span class="badge ok">⎇ ${esc(b)}</span>`).join("")}
         <span class="muted small">${rows.length} server${rows.length === 1 ? "" : "ar"} · ${ports(r)} port${ports(r) === 1 ? "" : "ar"}</span></div>
-        <table><tr><th>Port</th><th>Typ</th><th>Process</th><th>${r === NONE ? "Katalog" : "Branch"}</th><th>Startad från</th><th>Kommando</th><th></th></tr>
+        <table><tr><th>Port</th><th>Typ</th><th>Process</th><th>${r === NONE ? "Katalog" : "Branch"}</th><th title="Var servern körs: en tmux-pane (▣) eller en Docker-container (🐳). — betyder att den startades någon annanstans, t.ex. i ett Terminal-fönster, i en editor eller av macOS.">Körs i</th><th>Kommando</th><th></th></tr>
         ${rows.map(row).join("")}</table></div>`;
     }).join("") || `<div class="empty">Inga servrar.</div>`}`;
 }
@@ -895,7 +895,7 @@ function renderInspector() {
   if (inspect.kind === "text") {
     if (el.dataset.key === inspect.title) return;
     el.dataset.key = inspect.title;
-    el.innerHTML = `<div class="row"><h2>${esc(inspect.title)}</h2><button class="sm" id="iReload">↻</button><button class="sm" id="iClose">✕</button></div><pre class="term" id="iText">Laddar…</pre>`;
+    el.innerHTML = `<div class="row"><h2>${esc(inspect.title)}</h2><button class="sm" id="iReload">↻</button><button class="sm" id="iClose">✕</button></div>${inspect.hint ? `<div class="meta">${esc(inspect.hint)}</div>` : ""}<pre class="term" id="iText">Laddar…</pre>`;
     loadText();
     return;
   }
@@ -1144,7 +1144,7 @@ document.addEventListener("click", async e => {
   if (ciEl) { const r = repoOf(ciEl.dataset.ci); return openInspect({ kind: "ci", repo: ciEl.dataset.ci, branch: ciEl.dataset.branch, title: `CI · ${r.name}@${ciEl.dataset.branch}` }); }
   if (t.id === "wfCancel" && inspect?.kind === "workflow") { await api("workflow_cancel", { id: inspect.id }); return loadWorkflow(); }
   const ct = t.closest("[data-ct]");
-  if (ct) { const name = ct.dataset.ct; return openInspect({ kind: "text", title: `🐳 ${name}`, load: async () => (await api("docker_logs", { id: name, lines: 300 }, true)).text }); }
+  if (ct) { const name = ct.dataset.ct; return openInspect({ kind: "text", title: `🐳 ${name}`, hint: "Containerns loggar, de senaste 300 raderna (äldst överst). ↻ hämtar dem igen.", load: async () => (await api("docker_logs", { id: name, lines: 300 }, true)).text }); }
   const b = t.closest("button[data-act]");
   const pe = !b && t.closest("[data-pane]");
   if (pe) { return openInspect({ kind: "pane", id: pe.dataset.pane }); }
