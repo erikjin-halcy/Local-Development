@@ -176,6 +176,14 @@ dialog .actions { display: flex; justify-content: flex-end; gap: 8px; }
 .step .sr { font: 11px var(--mono); color: var(--muted); word-break: break-all; }
 .runs { display: flex; flex-direction: column; gap: 6px; }
 .runrow { display: grid; grid-template-columns: 20px 1fr auto; gap: 8px; align-items: center; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel2); }
+.chlist { display: flex; flex-direction: column; overflow: auto; }
+.chrow { display: grid; grid-template-columns: 18px 1fr auto; gap: 8px; padding: 4px 6px; border-radius: 5px; font-size: 12.5px; align-items: center; }
+.chrow[data-file] { cursor: pointer; } .chrow[data-file]:hover { background: var(--panel2); }
+.chrow .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chs { font: 600 12px var(--mono); color: var(--warn); text-align: center; } .ch-ny { color: var(--ok); } .ch-borttagen, .ch-konflikt { color: var(--bad); }
+.chn { font: 11px var(--mono); white-space: nowrap; }
+.dadd { color: var(--ok); } .ddel { color: var(--bad); } .dhunk { color: var(--accent); }
+pre.diff { white-space: pre; }
 /* hjälp */
 dialog#help { width: min(860px, 94vw); max-height: 88vh; }
 #help .hbody { padding: 20px 24px; overflow: auto; max-height: calc(88vh - 60px); }
@@ -248,7 +256,8 @@ dialog#help { width: min(860px, 94vw); max-height: 88vh; }
   <dt><span class="badge warn">detached</span></dt><dd>Ingen branch är utcheckad, bara en enskild commit.</dd>
   <dt><span class="badge bad">saknas</span></dt><dd>Git känner till worktreen men katalogen är borta. <b>Rensa</b> tar bort den ur git.</dd>
   <dt><span class="badge ok">ren</span> / <span class="badge warn">±9</span></dt><dd>Inga ocommittade ändringar / antal filer med ocommittade ändringar.</dd>
-  <dt><span class="badge">↑6 ↓0</span></dt><dd>Commits före (ännu inte pushade) och efter (inte hämtade) remote-branchen.</dd>
+  <dt><span class="badge">↑6 ↓0</span></dt><dd>Commits före (ännu inte pushade) och efter (inte hämtade) remote-branchen. Klicka på ±N eller ↑N för att se vilka filer och commits det gäller, och en fil för dess diff.</dd>
+  <dt style="display:none"></dt><dd>Commits före (ännu inte pushade) och efter (inte hämtade) remote-branchen.</dd>
   <dt><span class="badge">lokal</span></dt><dd>Branchen finns bara på din dator, den är aldrig pushad.</dd>
   <dt><span class="badge ci success">CI ✓</span> <span class="badge ci failure">CI ✗</span> <span class="badge ci running">CI ⏳</span></dt><dd>GitHub Actions för branchen: senaste körningen per workflow lyckades, misslyckades eller pågår. Klicka för körningarna, loggar och <b>Kör om</b>.</dd>
   <dt><span class="badge pr">PR #12 ✓</span></dt><dd>Branchens öppna PR. ✓ = godkänd, ✗ = ändringar begärda, "utkast" = draft.</dd>
@@ -479,8 +488,8 @@ function wtRow(r, w) {
     </div>
     <div>
       <div class="row">
-        ${w.changes ? `<span class="badge warn" title="${w.changes} filer med ocommittade ändringar">±${w.changes}</span>` : `<span class="badge ok" title="Inga ocommittade ändringar">ren</span>`}
-        ${w.ahead || w.behind ? `<span class="badge" title="${w.ahead} commits före och ${w.behind} efter ${esc(w.upstream)}">↑${w.ahead} ↓${w.behind}</span>` : ""}
+        ${w.changes ? `<span class="badge warn" style="cursor:pointer" data-changes="${esc(w.path)}" title="${w.changes} filer med ocommittade ändringar. Klicka för att se dem.">±${w.changes}</span>` : `<span class="badge ok" title="Inga ocommittade ändringar">ren</span>`}
+        ${w.ahead || w.behind ? `<span class="badge" ${w.ahead ? `style="cursor:pointer" data-changes="${esc(w.path)}"` : ""} title="${w.ahead} commits före och ${w.behind} efter ${esc(w.upstream)}${w.ahead ? ". Klicka för att se dem." : ""}">↑${w.ahead} ↓${w.behind}</span>` : ""}
         ${!w.upstream && w.branch && !w.missing ? `<span class="badge" title="Branchen finns bara lokalt (inte pushad)">lokal</span>` : ""}
         ${ciBadge(r, w.branch, w.ci)}
         ${w.pr ? `<a class="badge pr" href="${esc(w.pr.url)}" target="_blank" rel="noopener" title="${esc(w.pr.title)}">PR #${w.pr.number}${w.pr.draft ? " utkast" : ""}${w.pr.review === "APPROVED" ? " ✓" : w.pr.review === "CHANGES_REQUESTED" ? " ✗" : ""}</a>` : ""}
@@ -862,6 +871,7 @@ function renderInspector() {
   main.classList.toggle("inspecting", !!inspect);
   if (!inspect) { el.innerHTML = ""; delete el.dataset.key; return; }
   if (inspect.kind === "workflow") { renderWorkflowInspect(el); return; }
+  if (inspect.kind === "changes") { renderChanges(el); return; }
   if (inspect.kind === "ci") { renderCIInspect(el); return; }
   if (inspect.kind === "text") {
     if (el.dataset.key === inspect.title) return;
@@ -930,6 +940,28 @@ function renderCIInspect(el) {
       <div><div>${esc(x.workflow)}</div><div class="small muted">${esc(x.title)} · ${esc(x.event)} · ${esc((x.created || "").slice(0, 16).replace("T", " "))}</div></div>
       <span class="row" style="gap:4px"><button class="sm" data-open="${esc(x.url)}">Logg ↗</button>
       ${x.status === "completed" && x.conclusion !== "success" && x.conclusion !== "skipped" ? `<button class="sm" data-act="ciRerun" data-repo="${esc(inspect.repo)}" data-run="${x.id}" title="Kör om de misslyckade jobben">Kör om</button>` : ""}</span></div>`).join("") || `<div class="muted small">Inga körningar för branchen.</div>`}</div>`;
+}
+
+// Ocommittat i en worktree: filerna och commits som inte är pushade. Klick på en fil visar diffen.
+const CH_ICON = { "ändrad": "M", "ny": "+", "borttagen": "−", "omdöpt": "→", "konflikt": "!" };
+async function renderChanges(el) {
+  const key = "ch:" + inspect.path + ":" + (inspect.file || "");
+  if (el.dataset.key === key) return;
+  el.dataset.key = key;
+  const back = inspect.file ? `<button class="sm" id="chBack">← Filer</button>` : `<button class="sm" id="chReload">↻</button>`;
+  el.innerHTML = `<div class="row"><h2>${esc(inspect.file || inspect.title)}</h2>${back}<button class="sm" id="iClose">✕</button></div><div id="chBody" class="muted small">Laddar…</div>`;
+  if (inspect.file) {
+    const d = await api("diff", { path: inspect.path, file: inspect.file }, true);
+    $("#chBody").outerHTML = `<pre class="term diff" id="chBody">${d.text.split("\n").map(l => `<span class="${l.startsWith("+") && !l.startsWith("+++") ? "dadd" : l.startsWith("-") && !l.startsWith("---") ? "ddel" : l.startsWith("@@") ? "dhunk" : ""}">${esc(l)}</span>`).join("\n")}</pre>`;
+    return;
+  }
+  const c = await api("changes", { path: inspect.path }, true);
+  $("#chBody").outerHTML = `<div id="chBody" class="chlist">
+    ${c.files.length ? c.files.map(f => `<div class="chrow" data-file="${esc(f.path)}" title="${esc(f.status)}${f.staged ? " (stagad)" : ""}">
+      <span class="chs ch-${esc(f.status)}">${CH_ICON[f.status] || "?"}</span><span class="mono">${esc(f.path)}</span>
+      <span class="chn">${f.add ? `<span class="dadd">+${f.add}</span>` : ""} ${f.del ? `<span class="ddel">−${f.del}</span>` : ""}</span></div>`).join("") : `<div class="muted small">Inga ocommittade ändringar.</div>`}
+    ${c.unpushed.length ? `<div class="muted small" style="margin-top:12px">Inte pushat</div>${c.unpushed.map(l => `<div class="chrow"><span class="chs">↑</span><span class="mono">${esc(l)}</span><span></span></div>`).join("")}` : ""}
+  </div>`;
 }
 
 async function loadText() {
@@ -1082,6 +1114,13 @@ document.addEventListener("click", async e => {
     if (a === "focus") return api("select", { pane: id });
     if (a === "title") return form("Pane-titel", [{ key: "title", label: "Titel", value: findPane(id)?.p.title || "" }], "Spara", d => api("title_pane", { pane: id, ...d }));
   }
+  const chEl = t.closest("[data-changes]");
+  if (chEl) { const r = S.repos.find(x => x.worktrees.some(w => w.path === chEl.dataset.changes)); const w = r?.worktrees.find(x => x.path === chEl.dataset.changes);
+    return openInspect({ kind: "changes", path: chEl.dataset.changes, title: `${r?.name}@${w?.branch || ""}` }); }
+  const chFile = t.closest("#inspector [data-file]");
+  if (chFile && inspect?.kind === "changes") { inspect = { ...inspect, file: chFile.dataset.file }; return renderInspector(); }
+  if (t.id === "chBack" && inspect?.kind === "changes") { inspect = { ...inspect, file: "" }; return renderInspector(); }
+  if (t.id === "chReload" && inspect?.kind === "changes") { delete $("#inspector").dataset.key; return renderInspector(); }
   const ciEl = t.closest("[data-ci]");
   if (ciEl) { const r = repoOf(ciEl.dataset.ci); return openInspect({ kind: "ci", repo: ciEl.dataset.ci, branch: ciEl.dataset.branch, title: `CI · ${r.name}@${ciEl.dataset.branch}` }); }
   if (t.id === "wfCancel" && inspect?.kind === "workflow") { await api("workflow_cancel", { id: inspect.id }); return loadWorkflow(); }

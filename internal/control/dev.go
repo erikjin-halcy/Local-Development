@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -957,4 +958,96 @@ func (c *Controller) openParked(a Args) (any, error) {
 		return nil, fmt.Errorf("inget parkerat för %s", r.Name)
 	}
 	return map[string]string{"path": path}, openInObsidian(path)
+}
+
+// changes visar vad som inte är committat i en worktree, och commits som inte är pushade.
+func (c *Controller) changes(a Args) (any, error) {
+	path := config.Home(a.S("path"))
+	if _, err := FindRepo(c.col.Snapshot(), path); err != nil {
+		return nil, err
+	}
+	type file struct {
+		Path   string `json:"path"`
+		Status string `json:"status"` // ändrad, ny, borttagen, omdöpt, konflikt
+		Staged bool   `json:"staged"`
+		Add    int    `json:"add"`
+		Del    int    `json:"del"`
+	}
+	// Inte git(): den trimmar bort det inledande mellanslaget som är en del av statuskoden
+	out, err := sysx.RunIn(path, 30*time.Second, "git", "status", "--porcelain=v1", "-z", "--untracked-files=all")
+	if err != nil {
+		return nil, err
+	}
+	var files []file
+	entries := strings.Split(out, "\x00")
+	for i := 0; i < len(entries); i++ {
+		e := entries[i]
+		if len(e) < 4 {
+			continue
+		}
+		x, y, p := e[0], e[1], e[3:]
+		f := file{Path: p, Staged: x != ' ' && x != '?'}
+		switch {
+		case x == '?':
+			f.Status = "ny"
+		case x == 'U' || y == 'U' || (x == 'A' && y == 'A') || (x == 'D' && y == 'D'):
+			f.Status = "konflikt"
+		case x == 'D' || y == 'D':
+			f.Status = "borttagen"
+		case x == 'R':
+			f.Status = "omdöpt"
+			i++ // -z: originalnamnet följer som egen post
+		case x == 'A':
+			f.Status = "ny"
+		default:
+			f.Status = "ändrad"
+		}
+		files = append(files, f)
+	}
+	// Antal rader per fil, mot senaste commit
+	counts := map[string][2]int{}
+	if ns, err := git(path, "diff", "HEAD", "--numstat"); err == nil {
+		for _, l := range strings.Split(ns, "\n") {
+			p := strings.SplitN(l, "\t", 3)
+			if len(p) == 3 {
+				ad, _ := strconv.Atoi(p[0])
+				de, _ := strconv.Atoi(p[1])
+				counts[p[2]] = [2]int{ad, de}
+			}
+		}
+	}
+	for i := range files {
+		files[i].Add, files[i].Del = counts[files[i].Path][0], counts[files[i].Path][1]
+	}
+	var commits []string
+	if lg, err := git(path, "log", "--format=%h %s", "@{upstream}..HEAD"); err == nil && lg != "" {
+		commits = strings.Split(lg, "\n")
+	}
+	if files == nil {
+		files = []file{}
+	}
+	if commits == nil {
+		commits = []string{}
+	}
+	return map[string]any{"files": files, "unpushed": commits}, nil
+}
+
+// diff visar ändringarna i en fil mot senaste commit (nya filer visas i sin helhet).
+func (c *Controller) diff(a Args) (any, error) {
+	path := config.Home(a.S("path"))
+	if _, err := FindRepo(c.col.Snapshot(), path); err != nil {
+		return nil, err
+	}
+	file := a.S("file")
+	if file == "" || strings.HasPrefix(file, "-") || strings.Contains(file, "..") {
+		return nil, errors.New("ogiltig fil")
+	}
+	out, err := git(path, "diff", "HEAD", "--no-color", "--", file)
+	if err == nil && out == "" {
+		out, _ = git(path, "diff", "--no-color", "--no-index", "--", "/dev/null", file)
+	}
+	if len(out) > 200_000 {
+		out = out[:200_000] + "\n… (förkortad)"
+	}
+	return map[string]string{"text": out}, nil
 }
