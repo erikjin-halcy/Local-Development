@@ -642,7 +642,7 @@ function renderWindow(w, depth, s, kids) {
   return `<div class="window ${w.active ? "active" : ""} ${esc(w.kind)} ${depth ? "child" : ""}">
     ${parent || nk ? `<div class="wrel">${parent ? `↳ under <b>${parent.index}: ${esc(parent.name)}</b>` : ""}${parent && nk ? " · " : ""}${nk ? `${nk} underfönster` : ""}</div>` : ""}
     <div class="whead">
-      ${w.active ? `<span class="dot blue"></span>` : ""}<span class="muted mono">${w.index}:</span><span class="wname">${esc(w.name)}</span>${kindBadge(w.kind)}
+      ${w.active ? `<span class="dot blue"></span>` : ""}<span class="muted mono">${w.index}:</span><span class="wname">${esc(progName(w.name))}</span>${kindBadge(w.kind)}
       <span class="spacer"></span>
       ${B("newChild", "+↳", `data-w="${esc(w.id)}"`, "Nytt underfönster")}
       ${B("setParent", "⤷", `data-w="${esc(w.id)}"`, "Flytta under ett annat fönster")}
@@ -667,7 +667,7 @@ function windowBranches(w) {
 function renderTree(sessActs) {
   const tog = id => `<span class="tog" data-tog="${esc(id)}">${collapsed.has(id) ? "▸" : "▾"}</span>`;
   const node = (w, kids) => `<li><div class="trow">${tog(w.id)}<span>${w.kind.includes("orchestrator") ? "🎛" : w.kind === "worker" ? "⚙" : "▭"}</span>
-      <b>${w.index}: ${esc(w.name)}</b>${kindBadge(w.kind)}${(r => r.length ? `<span class="badge ok">⎇ ${r.map(esc).join(" · ")}</span>` : "")([...new Set(w.panes.filter(p => p.worktree).map(p => `${p.worktree.repo}@${p.worktree.branch}`))])}
+      <b>${w.index}: ${esc(progName(w.name))}</b>${kindBadge(w.kind)}${(r => r.length ? `<span class="badge ok">⎇ ${r.map(esc).join(" · ")}</span>` : "")([...new Set(w.panes.filter(p => p.worktree).map(p => `${p.worktree.repo}@${p.worktree.branch}`))])}
       <span class="tsub">${w.panes.length} pane${w.panes.length === 1 ? "" : "s"}${(kids[w.id] || []).length ? ` · ${kids[w.id].length} underfönster` : ""}</span>
       <span class="tacts">${B("newChild", "+ Underfönster", `data-w="${esc(w.id)}"`, "")}${B("addPane", "+ Pane", `data-w="${esc(w.id)}"`, "")}${B("setParent", "⤷ Flytta", `data-w="${esc(w.id)}"`, "")}${B("renameWindow", "✎", `data-w="${esc(w.id)}"`, "Byt namn")}${B("kill", "✕", `data-kind="window" data-t="${esc(w.id)}"`, "Stäng", "danger")}</span></div>
     ${collapsed.has(w.id) ? "" : `<ul>${w.panes.map(p => `<li><div class="trow ${inspect?.id === p.id ? "sel" : ""}" data-pane="${esc(p.id)}"><span class="tog"></span><span>${p.active ? "▣" : "□"}</span>

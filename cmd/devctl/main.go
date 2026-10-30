@@ -547,7 +547,7 @@ func printStatus(s state.Snapshot, all bool) {
 			if w.Kind != "" {
 				k = "[" + w.Kind + "]"
 			}
-			ws = append(ws, fmt.Sprintf("%d:%s%s", w.Index, w.Name, k))
+			ws = append(ws, fmt.Sprintf("%d:%s%s", w.Index, progName(w.Name), k))
 		}
 		fmt.Printf("  %s: %s\n", se.Name, strings.Join(ws, "  "))
 	}
