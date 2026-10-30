@@ -28,6 +28,9 @@ Flikar går att länka till direkt: `http://localhost:7878/#tmux`, `#servers`, `
 | starta/visa den globala orkestratorn | `devctl orchestrator` |
 | kom ihåg en fråga till senare (se skillen `parkera`) | `devctl park "<text>"`, `devctl park list`, `devctl park done <id>` |
 | köra skript, Metro, deploy eller ett workflow | `devctl actions <repo>`, `devctl run <repo> <action>` |
+| öppna eller stoppa en lokal server | `devctl open 8080`, `devctl stop 8080 --yes` |
+| se vad alla Claude-sessioner gör | `devctl sessions`, `devctl summarize all` |
+| agenternas fynd (t.ex. säkerhet) | `devctl agents`, `devctl agents findings sakerhet` |
 
 Repo anges med namn (`Dentio`) eller sökväg. tmux-mål anges med ID (`%12`, `@3`, `$1`).
 Allt annat (byta namn på fönster, dela panes, layout, fönsterhierarki, lokala orkestratorfönster,

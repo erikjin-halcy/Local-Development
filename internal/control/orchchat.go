@@ -79,6 +79,7 @@ type chatItem struct {
 
 var crossRe = regexp.MustCompile(`(?s)<cross-session-message from="([^"]*)"(?: from-name="([^"]*)")?[^>]*>\s*(.*?)\s*(?:</cross-session-message>|\n\nThis came from another Claude session|$)`)
 var cmdRe = regexp.MustCompile(`<command-name>([^<]+)</command-name>`)
+var pastedRe = regexp.MustCompile(`(?s)^<pasted_content[^>]*>\s*(.*?)\s*</pasted_content(?:\s+id="[^"]*")?>$`)
 
 func where(s *state.ClaudeSession) string {
 	if s == nil {
@@ -146,6 +147,10 @@ func (c *Controller) orchHistory(a Args) (any, error) {
 						goto next
 					}
 					text = strings.TrimSpace(text)
+					// Långa inskrivna meddelanden sparas som inklistrad text; packa upp dem
+					if m := pastedRe.FindStringSubmatch(text); m != nil {
+						text = strings.TrimSpace(m[1])
+					}
 					switch {
 					case strings.HasPrefix(text, "<local-command-caveat>") || strings.HasPrefix(text, "<local-command-stdout>"):
 					case cmdRe.MatchString(text):
@@ -172,7 +177,9 @@ func (c *Controller) orchHistory(a Args) (any, error) {
 								continue
 							}
 							used[i] = true
-							if e.By != "" {
+							if e.Via == "agent" {
+								it.From, it.Who, it.Where = "agent", e.By, "agent i devctl"
+							} else if e.By != "" {
 								it.From, it.Who, it.Where = "session", e.By, strings.TrimSpace("via devctl · "+e.Where)
 							} else if e.Via == "app" {
 								it.Where = "i devctl"

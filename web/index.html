@@ -188,6 +188,16 @@ dialog .actions { display: flex; justify-content: flex-end; gap: 8px; }
 .chn { font: 11px var(--mono); white-space: nowrap; }
 .dadd { color: var(--ok); } .ddel { color: var(--bad); } .dhunk { color: var(--accent); }
 pre.diff { white-space: pre; }
+.finding { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel2); margin-bottom: 6px; }
+.omsg.user.agent { align-self: flex-start; background: #2d2414; border-color: #6a4a24; border-radius: 12px 12px 12px 2px; }
+.omsg.user.agent .owho { color: var(--warn); }
+.ochip { cursor: pointer; padding: 0 4px; border-radius: 4px; background: #0b0f14; border: 1px solid var(--line); font: 12px var(--mono); }
+.ochip:hover { border-color: var(--accent); }
+#qchat { position: fixed; right: 24px; bottom: 24px; width: min(560px, 92vw); max-height: 60vh; z-index: 45; display: none; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--orch); border-radius: 12px; box-shadow: 0 12px 40px #000a; }
+#qchat.open { display: flex; }
+#qchat .qmsgs { overflow: auto; padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
+#qchat textarea { margin: 0 12px 12px; width: auto; }
 /* hjälp */
 dialog#help { width: min(860px, 94vw); max-height: 88vh; }
 #help .hbody { padding: 20px 24px; overflow: auto; max-height: calc(88vh - 60px); }
@@ -209,6 +219,7 @@ dialog#help { width: min(860px, 94vw); max-height: 88vh; }
   <span class="stats" id="stats"></span>
   <span class="spacer"></span>
   <button id="btnHelp" title="Förklaring av alla fält och knappar">?</button>
+  <button id="btnQuick" title="Fråga orkestratorn (⌘K)">⌘K</button>
   <button id="btnLog" title="Uppdatera dagens utvecklingslogg i Obsidian och öppna den">Dagens logg</button>
   <button class="orch" id="btnOrch">Orkestrator</button>
 </header>
@@ -293,10 +304,16 @@ dialog#help { width: min(860px, 94vw); max-height: 88vh; }
   <dt>Servrar</dt><dd>Allt som lyssnar på en port: typ, process, repo och branch, och vilken pane som startade den. <span class="badge warn">öppen</span> = nåbar från nätverket, inte bara från datorn.</dd>
   <dt>Docker</dt><dd>Containrar per projekt, med starta, stoppa, starta om och loggar.</dd>
   <dt>Orkestrator</dt><dd>Chatt med den globala orkestratorn och listan över dess workers.</dd>
+  <dt>Agenter</dt><dd>Agenter granskar dina repos i bakgrunden med Claude Code (t.ex. 🛡 Säkerhet: nya ändringar mot säkerhetsprinciper, repots regler och företagsreglerna) och skickar fynd till orkestratorn. Här ser du fynden per repo och kan köra en agent direkt, markera fynd som hanterade eller ignorerade, skapa nya agenter och redigera företagsreglerna.</dd>
+  <dt>⌘K</dt><dd>Öppnar en liten chatt mot orkestratorn från vilken flik som helst, t.ex. "öppna Halcy-appen", "kör Starta allt i Halcy-app" eller "vad gör alla sessioner?". I orkestratorns svar är portar (:8080) och panes (%12) klickbara.</dd>
   <dt>Automation</dt><dd>Local-Automation: dina schemalagda Claude-uppgifter, deras resultat och "Kör nu".</dd>
 </dl>
 <p class="muted small" style="margin-top:20px">Allt uppdateras automatiskt: tmux, servrar och Docker varannan sekund, git var 10:e, PR:er varannan minut.</p>
 </div></dialog>
+<div id="qchat"><div class="row" style="padding:10px 14px;border-bottom:1px solid var(--line)"><b>Orkestratorn</b><span class="muted small" id="qchatStatus"></span><span class="spacer"></span>
+  <button class="sm" id="qchatGo">Öppna chatten</button><button class="sm" id="qchatClose">✕</button></div>
+  <div class="qmsgs" id="qchatMsgs"></div>
+  <textarea id="qchatIn" rows="2" placeholder="Fråga eller be orkestratorn … (Enter skickar, Esc stänger)"></textarea></div>
 <div id="toast"></div>
 
 <script>
@@ -315,7 +332,7 @@ let opts = store.get("opts", { inactive: false, apps: false, stopped: false, tmu
 const collapsed = new Set();
 let inspect = null; // { kind: "pane", id } | { kind: "text", title, load }
 
-const TABS = [["overview", "Översikt"], ["tmux", "tmux"], ["servers", "Servrar"], ["docker", "Docker"], ["orchestrator", "Orkestrator"], ["automation", "Automation"]];
+const TABS = [["overview", "Översikt"], ["tmux", "tmux"], ["servers", "Servrar"], ["docker", "Docker"], ["orchestrator", "Orkestrator"], ["agents", "Agenter"], ["automation", "Automation"]];
 // Flikar går att länka till: http://localhost:7878/#docker
 if (TABS.some(([k]) => k === location.hash.slice(1))) tab = location.hash.slice(1);
 window.addEventListener("hashchange", () => { const h = location.hash.slice(1); if (TABS.some(([k]) => k === h)) { tab = h; render(); } });
@@ -372,6 +389,7 @@ function render() {
   const A = S.automation || {};
   const failed = (A.tasks || []).filter(t => t.lastRun && t.lastRun.exit != null && t.lastRun.exit !== 0).length;
   const counts = { overview: S.repos.filter(r => r.active).length, tmux: nP, servers: nS, docker: nC, orchestrator: S.orchestrator ? "●" : "",
+    agents: agentsOpen ? `${agentsOpen}⚑` : "",
     automation: !A.url ? "" : !A.online ? "○" : failed ? `${failed}✗` : (A.tasks || []).filter(t => t.running).length ? "▶" : (A.tasks || []).length };
   $("#tabs").innerHTML = TABS.map(([k, l]) => `<button data-tab="${k}" class="${tab === k ? "on" : ""}">${l}<span class="n">${counts[k] ?? ""}</span></button>`).join("");
   $("#stats").textContent = `${nW} worktrees · ${nP} panes · ${nS} servrar · ${nC} containrar`;
@@ -380,7 +398,7 @@ function render() {
   store.set("tab", tab);
   const v = $("#view");
   renderBanner();
-  ({ overview: renderOverview, tmux: renderTmux, servers: renderServers, docker: renderDocker, orchestrator: renderOrch, automation: renderAutomation }[tab] || renderOverview)(v);
+  ({ overview: renderOverview, tmux: renderTmux, servers: renderServers, docker: renderDocker, orchestrator: renderOrch, agents: renderAgents, automation: renderAutomation }[tab] || renderOverview)(v);
   renderInspector();
 }
 
@@ -764,7 +782,10 @@ function parseClaude(text) {
 
 // Enkel markdown för svaren: rubriker, fetstil, kod, listor och tabeller.
 function md(t) {
-  const inline = s => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
+  // :8080 öppnar servern, %12 visar panen
+  const refs = h => h.replace(/(^|[\s(>])(:\d{3,5})\b/g, (m, p, port) => `${p}<span class="ochip" data-ochip="${port.slice(1)}" title="Öppna localhost${port}">${port}</span>`)
+    .replace(/(^|[\s(>])(%\d{1,4})\b/g, (m, p, id) => findPane(id) ? `${p}<span class="ochip" data-ochip="${id}" title="Visa panen">${id}</span>` : m);
+  const inline = s => refs(esc(s).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>"));
   const out = []; let list = false, table = null;
   const flush = () => {
     if (!table) return;
@@ -809,7 +830,7 @@ async function loadOrch(scroll) {
     const h = await api("orch_history", {}, true);
     const who = x => `<div class="owho">${x.from === "session" ? "🤖 " : ""}<b>${esc(x.who)}</b>${x.where ? ` · ${esc(x.where)}` : ""} · ${esc(x.time)}</div>`;
     const html = h.items.map(x =>
-        x.role === "user" ? `<div class="omsg user ${x.from === "session" ? "peer" : ""}">${who(x)}${esc(x.text.trim())}</div>`
+        x.role === "user" ? `<div class="omsg user ${x.from === "session" ? "peer" : x.from === "agent" ? "agent" : ""}">${who(x)}${esc(x.text.trim())}</div>`
       : x.role === "tool" ? `<div class="omsg tool">⚙ ${esc(x.who)} ${esc(x.text)}</div>`
       : x.role === "system" ? `<div class="omsg tool" title="${esc(x.text)}">ⓘ ${esc(x.who)}: ${esc(x.text)}</div>`
       : `<div class="omsg bot"><div class="owho"><b>Orkestratorn</b> · ${esc(x.time)}</div>${md(x.text)}</div>`).join("")
@@ -826,6 +847,73 @@ function setTerm(pre, text, scroll) {
   const t = String(text).split("\n").map(l => l.replace(/\s+$/, "")).map(l => /^[─━═\-]{20,}$/.test(l) ? "─".repeat(48) : l)
     .join("\n").replace(/\n{3,}/g, "\n\n").replace(/^\n+/, "").replace(/\s+$/, "");
   if (pre.textContent !== t) { pre.textContent = t; if (scroll || atBottom) pre.scrollTop = pre.scrollHeight; }
+}
+
+// ---------- Agenter ----------
+// Agenterna och deras fynd hämtas separat (de ingår inte i läget som uppdateras varannan sekund).
+let agentsData = null, agentsOpen = 0, agentsLoading = false;
+async function loadAgents(force) {
+  if (agentsLoading && !force) return;
+  agentsLoading = true;
+  try {
+    agentsData = await api("agents", {}, true);
+    agentsOpen = agentsData.agents.reduce((n, a) => n + (a.state?.findings || []).filter(f => f.status === "öppen").length, 0);
+    if (tab === "agents") renderAgents($("#view"));
+  } catch {} finally { agentsLoading = false; }
+}
+setInterval(() => loadAgents(), 10000);
+loadAgents();
+
+const SEV = { "hög": "bad", "medel": "warn", "låg": "" };
+function renderAgents(v) {
+  if (!agentsData) { v.innerHTML = `<div class="empty">Laddar agenter…</div>`; return; }
+  const show = opts.agentShow || "öppen";
+  const html = agentsData.agents.map(a => {
+    const st = a.state || {};
+    const fs = (st.findings || []).filter(f => show === "alla" || f.status === show);
+    const open = (st.findings || []).filter(f => f.status === "öppen").length;
+    const byRepo = {};
+    for (const f of fs) (byRepo[`${f.repo}@${f.branch}`] ||= []).push(f);
+    const scans = Object.entries(st.scans || {});
+    return `<div class="card">
+      <div class="chead">
+        <span class="cname">${esc(a.icon || "🤖")} ${esc(a.label)}</span>
+        ${a.error ? `<span class="badge bad" title="${esc(a.error)}">fel i filen</span>` : `<span class="badge ${a.enabled ? "ok" : ""}">${a.enabled ? "på · var " + esc(a.every) : "av"}</span>`}
+        ${st.running ? `<span class="badge warn">granskar ${esc(st.current || "")} …</span>` : ""}
+        ${open ? `<span class="badge bad">${open} öppna fynd</span>` : ""}
+        <span class="muted small">${esc(a.description || "")}</span>
+        <span class="spacer"></span>
+        <span class="row" style="gap:4px">
+          <button class="sm" data-act="agentRun" data-name="${esc(a.name)}" ${st.running ? "disabled" : ""} title="Granska alla repos som omfattas nu, även de som inte ändrats">Kör nu</button>
+          ${a.error ? "" : `<button class="sm" data-act="agentToggle" data-name="${esc(a.name)}" data-on="${a.enabled ? "0" : "1"}">${a.enabled ? "Stäng av" : "Slå på"}</button>`}
+          <button class="sm" data-act="agentEdit" data-name="${esc(a.name)}" title="${esc(a.file)}">Redigera</button>
+        </span>
+      </div>
+      <div style="padding:8px 14px" class="muted small">
+        Senast ${esc(st.lastRun || "aldrig")}${st.error ? ` · <span style="color:var(--bad)">${esc(st.error)}</span>` : ""}
+        · skickar fynd från <b>${esc(a.notify)}</b> och uppåt till orkestratorn
+        ${scans.length ? ` · granskat: ${scans.map(([p, sc]) => `<span title="${esc(sc.summary || sc.error || "")}">${esc(p.split("/").pop())} ${esc(sc.time)}${sc.error ? " ✗" : ""}</span>`).join(", ")}` : ""}
+      </div>
+      ${Object.entries(byRepo).map(([rb, list]) => `<div style="padding:4px 14px 10px"><div class="small mono" style="color:var(--ok);margin-bottom:4px">⎇ ${esc(rb)}</div>
+        ${list.map(f => `<div class="finding">
+          <span class="badge ${SEV[f.severity] || ""}">${esc(f.severity)}</span>
+          <div><div><b class="mono small">${esc(f.file)}${f.line ? ":" + f.line : ""}</b> <span class="muted small">· ${esc(f.rule)} · ${esc(f.source || "")} · ${esc(f.found)} · ${esc(f.id)}</span></div>
+            <div class="small">${esc(f.finding)}</div>
+            ${f.suggestion ? `<div class="small muted">→ ${esc(f.suggestion)}</div>` : ""}</div>
+          <span class="row" style="gap:4px;align-self:start">
+            ${f.status === "öppen" ? `<button class="sm" data-act="findingNotify" data-id="${esc(f.id)}" title="Be orkestratorn hantera fyndet">Till orkestratorn</button>
+              <button class="sm" data-act="finding" data-op="resolve" data-id="${esc(f.id)}">Hanterad</button>
+              <button class="sm" data-act="finding" data-op="ignore" data-id="${esc(f.id)}" title="Inte ett problem; visas inte igen">Ignorera</button>`
+            : `<span class="badge">${esc(f.status)}</span><button class="sm" data-act="finding" data-op="reopen" data-id="${esc(f.id)}">Öppna igen</button>`}
+          </span></div>`).join("")}</div>`).join("") || `<div class="muted small" style="padding:0 14px 12px">${show === "öppen" ? "Inga öppna fynd." : "Inga fynd."}</div>`}
+    </div>`;
+  }).join("");
+  v.innerHTML = `<div class="toolbar">
+      <span class="seg">${[["öppen", "Öppna"], ["hanterad", "Hanterade"], ["ignorerad", "Ignorerade"], ["alla", "Alla"]].map(([k, l]) => `<button data-ashow="${k}" class="${show === k ? "on" : ""}">${l}</button>`).join("")}</span>
+      <button class="sm" data-act="agentNew">+ Ny agent</button>
+      <button class="sm" data-act="agentEdit" data-name="rules" title="${esc(agentsData.rules)}">Företagsregler</button>
+      <span class="spacer"></span><span class="muted small">Agenter granskar dina repos i bakgrunden med Claude Code och skickar fynd till orkestratorn.</span>
+    </div>` + (html || `<div class="empty">Inga agenter.</div>`);
 }
 
 // ---------- Local-Automation ----------
@@ -1123,6 +1211,11 @@ document.addEventListener("click", async e => {
   if ($("#menu") && !t.closest("#menu") && !t.closest('[data-act="actions"]')) closeMenu();
   const tb = t.closest("[data-tab]"); if (tb) { tab = tb.dataset.tab; store.set("tab", tab); lastKey = ""; return render(); }
   const tgo = t.closest("[data-tabgo]"); if (tgo) { tab = tgo.dataset.tabgo; store.set("tab", tab); return render(); }
+  const as = t.closest("[data-ashow]"); if (as) { opts.agentShow = as.dataset.ashow; store.set("opts", opts); return renderAgents($("#view")); }
+  const oc = t.closest("[data-ochip]");
+  if (oc) { const v = oc.dataset.ochip; return v.startsWith("%") ? openInspect({ kind: "pane", id: v }) : api("open", { target: v }); }
+  if (t.id === "qchatClose") return toggleQuickChat(false);
+  if (t.id === "qchatGo") { toggleQuickChat(false); tab = "orchestrator"; return render(); }
   const rv = t.closest("[data-rview]"); if (rv) { opts.repoView = rv.dataset.rview; store.set("opts", opts); return render(); }
   if (t.closest("#btnHelp")) return $("#help").showModal();
   const tv = t.closest("[data-tview]"); if (tv) { opts.tmuxView = tv.dataset.tview; store.set("opts", opts); return render(); }
@@ -1206,6 +1299,12 @@ document.addEventListener("click", async e => {
     case "killGroup": if (!confirm2()) return; { const res = await api("kill_processes", { pids: d.pids.split(",").map(Number) }); return toast(`Stoppade ${res.stopped} processer`, true); }
     case "stopContainer": if (!confirm2()) return; return api("docker", { op: "stop", id: d.id });
     case "parked": return api("open_parked", { repo: d.repo });
+    case "agentRun": { b.disabled = true; await api("agent_run", { name: d.name }); toast("Agenten granskar i bakgrunden", true); return setTimeout(() => loadAgents(true), 1500); }
+    case "agentToggle": await api("agent_toggle", { name: d.name, enabled: d.on === "1" }); return loadAgents(true);
+    case "agentEdit": { const r = await api("agent_edit", { name: d.name }); return toast(`Öppnar ${short(r.path)}`, true); }
+    case "agentNew": return form("Ny agent", [{ key: "label", label: "Namn", ph: "t.ex. Beroenden, Tester, Dokumentation" }], "Skapa", async x => { const r = await api("agent_new", x); toast(`Skapad: ${short(r.path)}. Skriv prompten och slå på den.`, true); loadAgents(true); });
+    case "finding": await api("agent_finding", { op: d.op, id: d.id }); return loadAgents(true);
+    case "findingNotify": await api("agent_notify", { id: d.id }); toast("Skickat till orkestratorn", true); return loadAgents(true);
     case "repoNote": return api("repo_note", { repo: d.repo, open: true });
     case "prune": return api("worktree_prune", { repo: d.repo });
     case "orchStart": { const o = await api("orchestrator_start"); tab = "orchestrator"; store.set("tab", tab); return; }
@@ -1247,6 +1346,14 @@ document.addEventListener("change", e => {
 document.addEventListener("toggle", e => { const d = e.target.closest?.("[data-det]"); if (d) d.open ? collapsed.add(d.dataset.det) : collapsed.delete(d.dataset.det); }, true);
 document.addEventListener("input", e => { if (e.target.id === "q") { opts.q = e.target.value; store.set("opts", opts); const pos = e.target.selectionStart; render(); const q = $("#q"); q.focus(); q.setSelectionRange(pos, pos); } });
 document.addEventListener("keydown", e => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); return toggleQuickChat(); }
+  if (e.target.id === "qchatIn") {
+    if (e.key === "Escape") { e.preventDefault(); return toggleQuickChat(false); }
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing && e.target.value.trim() && S.orchestrator) {
+      e.preventDefault(); const text = e.target.value; e.target.value = "";
+      return api("send", { pane: S.orchestrator.pane, text, enter: true, via: "app" }).then(() => setTimeout(loadQuickChat, 500));
+    }
+  }
   if ($("#menu")) {
     if (e.key === "Escape") { e.preventDefault(); return closeMenu(); }
     if (e.key === "Enter" && e.target.id === "menuQ") { const first = $("#menu .mitem"); if (first) { e.preventDefault(); const m = $("#menu"); return runAction(m.dataset.repo, m.dataset.path, first.dataset.aid); } }
@@ -1261,6 +1368,30 @@ async function sendInspect() {
   await api("send", { pane: inspect.id, text: i.value, enter: $("#iEnter").checked, via: "app" });
   i.value = ""; setTimeout(() => loadPane(true), 300);
 }
+// ⌘K: liten chatt mot orkestratorn från vilken flik som helst
+function toggleQuickChat(on) {
+  const q = $("#qchat");
+  on = on ?? !q.classList.contains("open");
+  q.classList.toggle("open", on);
+  if (on) { $("#qchatIn").focus(); loadQuickChat(); }
+}
+async function loadQuickChat() {
+  if (!$("#qchat").classList.contains("open") || !S.orchestrator) {
+    if (!S.orchestrator && $("#qchat").classList.contains("open")) $("#qchatMsgs").innerHTML = `<div class="muted small">Orkestratorn körs inte. <a href="#orchestrator">Starta den</a>.</div>`;
+    return;
+  }
+  try {
+    const h = await api("orch_history", {}, true);
+    $("#qchatStatus").textContent = h.status === "busy" ? " · arbetar …" : " · väntar på dig";
+    const last = h.items.filter(x => x.role === "user" || x.role === "bot").slice(-4);
+    const box = $("#qchatMsgs");
+    box.innerHTML = last.map(x => x.role === "user" ? `<div class="omsg user ${x.from === "session" ? "peer" : x.from === "agent" ? "agent" : ""}"><div class="owho"><b>${esc(x.who)}</b> · ${esc(x.time)}</div>${esc(x.text.trim()).slice(0, 600)}</div>`
+      : `<div class="omsg bot"><div class="owho"><b>Orkestratorn</b> · ${esc(x.time)}</div>${md(x.text)}</div>`).join("");
+    box.scrollTop = box.scrollHeight;
+  } catch {}
+}
+setInterval(loadQuickChat, 2000);
+
 async function sendOrch() {
   const i = $("#orchIn"); if (!i || !S.orchestrator || !i.value.trim()) return;
   const text = i.value; i.value = "";
@@ -1273,6 +1404,7 @@ $("#btnOrch").onclick = async () => {
   if (!S.orchestrator) await api("orchestrator_start");
   tab = "orchestrator"; store.set("tab", tab); render();
 };
+$("#btnQuick").onclick = () => toggleQuickChat();
 $("#btnLog").onclick = async () => { const r = await api("daily_log", { open: true }); toast("Dagens logg uppdaterad i Obsidian", true); };
 
 render();

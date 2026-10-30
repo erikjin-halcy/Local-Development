@@ -181,6 +181,39 @@ Varje repo du jobbar med har en mapp `Claude/` i sin Obsidian-mapp (`<projectDir
 Importen går via `~/.config/devctl/context/<repo>`, en länk utan mellanslag till valvets mapp, eftersom
 Claude Codes `@`-import inte klarar mellanslag i sökvägar.
 
+## Orkestratorn i appen
+
+Orkestratorn är en Claude Code-session i tmux som styr allt genom `devctl`. Chatta med den i fliken
+Orkestrator eller med **⌘K** från vilken flik som helst. Den kan bland annat:
+
+- `devctl open <port|url>` och `devctl stop <port> --yes` – öppna eller stoppa lokala servrar
+- `devctl run <repo> <action|workflow>` – köra skript, Metro, deploy och workflows
+- `devctl sessions` och `devctl summarize [all|<session>]` – se vad alla Claude-sessioner gör, ur deras loggar
+- `devctl ci <repo>`, `devctl park`, `devctl note`, `devctl log`
+
+Chatten visar vem som skrev varje meddelande: du, en annan Claude-session eller en agent. Portar (:8080)
+och panes (%12) i svaren är klickbara. Instruktionerna laddas om automatiskt när de ändras
+(`devctl orchestrator --reload` gör det direkt).
+
+## Agenter
+
+Agenter granskar dina repos i bakgrunden med Claude Code (`claude -p`, bara läsande verktyg) och skickar
+fynd till orkestratorn, som verifierar dem och tar upp dem med dig. Varje agent är en YAML-fil i
+`~/.config/devctl/agents/`; fliken Agenter visar fynden och har **+ Ny agent**.
+
+Den första är **🛡 Säkerhet**: den granskar nya ändringar (ocommittat och nya commits) i aktiva repos mot
+allmänna säkerhetsprinciper, repots egna regler (CLAUDE.md, AGENTS.md, SECURITY.md) och företagsreglerna i
+`Regler/Företagsregler.md` i valvet. Den kör var 2:a timme men bara för worktrees som ändrats, och skickar
+fynd från *medel* och uppåt till orkestratorn. Fyndtexterna skickas inte in i orkestratorn; den läser dem
+med `devctl agents findings` och behandlar dem som data.
+
+```bash
+devctl agents                      # agenter och antal öppna fynd
+devctl agents run sakerhet [--repo r]
+devctl agents findings sakerhet
+devctl agents resolve|ignore <id>
+```
+
 ## Parkerat: frågor som kommer upp mitt i en uppgift
 
 `devctl park "<text>"` sparar en fråga eller ett önskemål till senare, för repot du står i (eller
@@ -199,7 +232,9 @@ Claude jobbar, sparar den det direkt, gör klart uppgiften och tar sedan upp det
 | Motorn (CLI + server + gränssnitt) | `~/.local/bin/devctl` | nej, byggs med `make install` |
 | Appen | `/Applications/Devctl.app` | nej, byggs med `make install-app` |
 | Inställningar | `~/.config/devctl/config.json` | nej |
-| Egna actions | `~/.config/devctl/actions/<repo>.yaml` | nej |
+| Egna actions och workflows | `~/.config/devctl/actions/<repo>.yaml` | nej |
+| Agenter | `~/.config/devctl/agents/<namn>.yaml` | nej |
+| Agenternas fynd | `~/.cache/devctl/agents/<namn>.json` | nej |
 | Arkiverade repos | `~/.config/devctl/archive.json` | nej |
 | Loggar, pid, orkestratorns instruktioner | `~/.cache/devctl/` | nej |
 | Repo-mappar, branch-anteckningar, Claude-kontext, parkerat, dagliga loggar | Obsidian-valvet i `obsidian.vault` | nej |

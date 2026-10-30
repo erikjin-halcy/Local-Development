@@ -147,6 +147,12 @@ func (c *Collector) repoFor(dir string) string {
 }
 
 func (c *Collector) discover() {
+	added := false
+	defer func() {
+		if added {
+			c.Refresh(true) // läs in nya repos direkt i stället för om 10 sekunder
+		}
+	}()
 	// macOS skyddar t.ex. Skrivbord och Dokument; utan behörighet går rötterna inte att läsa
 	for _, root := range c.cfg.Roots {
 		_, err := os.ReadDir(root)
@@ -161,6 +167,7 @@ func (c *Collector) discover() {
 			c.gitMu.Lock()
 			if c.repos[common] == nil {
 				c.repos[common] = &Repo{Name: filepath.Base(dir), Path: dir, CommonDir: common}
+				added = true
 			}
 			c.gitMu.Unlock()
 		}
@@ -218,6 +225,14 @@ func (c *Collector) refreshGit() {
 	}
 	wg.Wait()
 	c.gitMu.Lock()
+	// Repos som upptäckts medan inläsningen pågick finns inte i fresh; behåll dem till nästa varv
+	for k, v := range c.repos {
+		if _, ok := fresh[k]; !ok {
+			if _, err := os.Stat(k); err == nil {
+				fresh[k] = v
+			}
+		}
+	}
 	c.repos = fresh
 	c.gitMu.Unlock()
 }

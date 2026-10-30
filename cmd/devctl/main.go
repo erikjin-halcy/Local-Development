@@ -29,7 +29,11 @@ const usage = `devctl – kontrollpanel för lokalt utvecklingsarbete
 
   devctl                         starta (om det behövs) och öppna webbgränssnittet
   devctl serve                   kör servern i förgrunden
-  devctl stop                    stoppa servern
+  devctl stop [<port> --yes]     stoppa devctl-servern, eller det som kör på en port
+  devctl open <port|url>         öppna t.ex. :8080 i webbläsaren
+  devctl sessions                alla Claude-sessioner med status och branch
+  devctl summarize [all|<namn|%%pane>]   vad sessionerna håller på med
+  devctl ci <repo> [--branch b]  GitHub Actions-status
   devctl status [--all] [--json] repos, worktrees, panes, servrar och containrar
   devctl worker start <repo> <branch> [--base b] [--task "..."] [--cmd c]
   devctl worktree add <repo> <branch> [--base b] [--path p]
@@ -43,6 +47,7 @@ const usage = `devctl – kontrollpanel för lokalt utvecklingsarbete
   devctl automation [kommando] [arg]   Local-Automation: veckoarkiv, synk, deploy, inloggningar, tjänster
   devctl park "<text>" [--repo r] [--from s]   kom ihåg en fråga eller ett önskemål till senare
   devctl park list [--all] | park done <id>    parkerat för repot du står i (eller --repo)
+  devctl agents [list] | run <namn> [--repo r] | findings [namn] | resolve|ignore <id>   agenter i devctl
   devctl orchestrator [--reload] starta (eller visa) den globala orkestratorn; --reload laddar nya instruktioner
   devctl brief                  orkestratorns systemprompt
   devctl autostart [--remove]    starta servern vid inloggning (launchd)
@@ -66,12 +71,23 @@ func main() {
 
 	switch cmd {
 	case "", "open":
+		if len(pos) > 0 {
+			_, err := c.do("open", map[string]any{"target": pos[0]})
+			must(err)
+			fmt.Println("öppnar", pos[0])
+			return
+		}
 		must(c.ensure())
 		_ = exec.Command("open", fmt.Sprintf("http://localhost:%d", cfg.Port)).Run()
 		fmt.Printf("devctl: http://localhost:%d\n", cfg.Port)
 	case "serve":
 		fail(server.Run(cfg))
 	case "stop":
+		if len(pos) > 0 {
+			_, yes := flags["yes"]
+			printResult(c.do("stop_port", map[string]any{"port": pos[0], "confirm": yes}))
+			return
+		}
 		stop()
 	case "status":
 		must(c.ensure())
@@ -171,6 +187,47 @@ func main() {
 		fmt.Println(res.(map[string]any)["path"])
 	case "automation":
 		automation(cfg, pos)
+	case "stop-port", "kill":
+		fail(errors.New("använd devctl stop <port> --yes"))
+	case "sessions":
+		res, err := c.do("sessions", nil)
+		must(err)
+		for _, x := range res.([]any) {
+			s := x.(map[string]any)
+			fmt.Printf("%-22s %-5s %-24s %-28s %s\n", s["name"], s["status"], s["tmux"], strings.Trim(fmt.Sprint(s["repo"], "@", s["branch"]), "@"), s["title"])
+		}
+	case "summarize":
+		t := "all"
+		if len(pos) > 0 {
+			t = pos[0]
+		}
+		res, err := c.do("summarize", map[string]any{"target": t})
+		must(err)
+		fmt.Print(res.(map[string]any)["text"])
+	case "ci":
+		if len(pos) < 1 {
+			fail(errors.New("användning: devctl ci <repo> [--branch b]"))
+		}
+		must(c.ensure())
+		snap, err := c.state()
+		must(err)
+		r, err := control.FindRepo(snap, pos[0])
+		must(err)
+		for _, b := range r.Branches {
+			if (flags["branch"] != "" && b.Name != flags["branch"]) || b.CI == nil {
+				continue
+			}
+			fmt.Printf("%s: %s\n", b.Name, b.CI.State)
+			for _, run := range b.CI.Runs {
+				st := run.Conclusion
+				if run.Status != "completed" {
+					st = run.Status
+				}
+				fmt.Printf("  %-12s %-30s %s\n", st, run.Workflow, run.URL)
+			}
+		}
+	case "agents", "agent":
+		agentsCmd(c, pos, flags)
 	case "park":
 		park(cfg, pos, flags)
 	case "orchestrator":
