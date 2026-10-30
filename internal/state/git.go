@@ -77,8 +77,11 @@ type Repo struct {
 	Branches  []Branch   `json:"branches"`
 	PRs       []PR       `json:"prs"`
 	Active    bool       `json:"active"`
-	LastUnix  int64      `json:"lastUnix"`
-	Error     string     `json:"error,omitempty"`
+	Archived  bool       `json:"archived"`
+	// Busy: något körs i repot (panes, servrar eller containrar)
+	Busy     bool   `json:"busy"`
+	LastUnix int64  `json:"lastUnix"`
+	Error    string `json:"error,omitempty"`
 }
 
 var skipDirs = map[string]bool{

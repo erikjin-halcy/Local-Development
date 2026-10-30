@@ -1,6 +1,7 @@
 package state
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -95,7 +96,7 @@ func (c *Collector) Start() {
 	go c.loop(2*time.Second, c.fastKick, c.refreshFast)
 	go c.loop(10*time.Second, c.gitKick, func() { c.refreshGit(); c.refreshFast() })
 	go c.loop(time.Minute, nil, func() {
-		if c.repoCount() == 0 {
+		if c.repoCount() == 0 || c.hasAccessError() {
 			c.discover()
 			c.refreshGit()
 		}
@@ -145,6 +146,15 @@ func (c *Collector) repoFor(dir string) string {
 }
 
 func (c *Collector) discover() {
+	// macOS skyddar t.ex. Skrivbord och Dokument; utan behörighet går rötterna inte att läsa
+	for _, root := range c.cfg.Roots {
+		_, err := os.ReadDir(root)
+		if err != nil && os.IsPermission(err) {
+			c.setErr("access:"+root, fmt.Errorf("ingen behörighet att läsa %s", root))
+		} else {
+			c.setErr("access:"+root, nil)
+		}
+	}
 	for _, dir := range discover(c.cfg.Roots, c.cfg.ScanDepth) {
 		if common := c.repoFor(dir); common != "" {
 			c.gitMu.Lock()
@@ -382,14 +392,24 @@ func (c *Collector) refreshFast() {
 		}
 	}
 
-	weekAgo := time.Now().Add(-3 * 24 * time.Hour).Unix()
+	// Aktivt = något körs, eller commits/ändringar de senaste 3 dagarna, eller öppna PR:er.
+	// Gamla ocommittade ändringar räknas inte; de gör annars repos aktiva för alltid.
+	recent := time.Now().Add(-3 * 24 * time.Hour).Unix()
+	archived := config.Archived()
 	for ri := range repos {
 		r := &repos[ri]
-		r.Active = len(r.PRs) > 0 || r.LastUnix > weekAgo || len(r.Worktrees) > 1
+		r.Archived = archived[r.Path]
+		r.Active = len(r.PRs) > 0 || r.LastUnix > recent
 		for _, wt := range r.Worktrees {
-			if len(wt.Panes)+len(wt.Servers)+len(wt.Containers) > 0 || wt.Changes > 0 || wt.Last.Unix > weekAgo {
+			if len(wt.Panes)+len(wt.Servers)+len(wt.Containers) > 0 {
+				r.Busy = true
+			}
+			if wt.Last.Unix > recent || (wt.Changes > 0 && worktreeTouched(wt.Path, recent)) {
 				r.Active = true
 			}
+		}
+		if r.Busy {
+			r.Active = true
 		}
 	}
 
@@ -447,4 +467,28 @@ func (c *Collector) repoCount() int {
 	c.gitMu.Lock()
 	defer c.gitMu.Unlock()
 	return len(c.repos)
+}
+
+// worktreeTouched svarar på om git-indexet ändrats efter t, ett billigt mått på om någon
+// arbetat i worktreen nyligen (git add, checkout, commit m.m. uppdaterar det).
+func worktreeTouched(path string, t int64) bool {
+	idx := filepath.Join(path, ".git", "index")
+	if b, err := os.ReadFile(filepath.Join(path, ".git")); err == nil && strings.HasPrefix(string(b), "gitdir: ") {
+		idx = filepath.Join(strings.TrimSpace(strings.TrimPrefix(string(b), "gitdir: ")), "index")
+	}
+	if st, err := os.Stat(idx); err == nil {
+		return st.ModTime().Unix() > t
+	}
+	return false
+}
+
+func (c *Collector) hasAccessError() bool {
+	c.gitMu.Lock()
+	defer c.gitMu.Unlock()
+	for k := range c.errors {
+		if strings.HasPrefix(k, "access:") {
+			return true
+		}
+	}
+	return false
 }

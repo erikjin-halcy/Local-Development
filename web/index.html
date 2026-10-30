@@ -136,6 +136,15 @@ dialog h3 { margin: 0; font: 600 15px var(--mono); }
 dialog label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
 dialog .hint { font-size: 12px; color: var(--muted); }
 dialog .actions { display: flex; justify-content: flex-end; gap: 8px; }
+/* hjälp */
+dialog#help { width: min(860px, 94vw); max-height: 88vh; }
+#help .hbody { padding: 20px 24px; overflow: auto; max-height: calc(88vh - 60px); }
+#help h3 { font: 600 16px var(--mono); margin: 0; }
+#help h4 { margin: 20px 0 8px; font-size: 14px; }
+#help dl { display: grid; grid-template-columns: max-content 1fr; gap: 7px 16px; margin: 0; font-size: 13px; align-items: baseline; }
+#help dt { white-space: nowrap; }
+#help dd { margin: 0; color: var(--muted); }
+#help .hhead { display: flex; align-items: center; padding: 14px 24px; border-bottom: 1px solid var(--line); }
 #toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--bad); color: #fff; padding: 8px 14px; border-radius: 8px; display: none; z-index: 30; max-width: 80vw; }
 #toast.ok { background: #238636; }
 </style>
@@ -147,14 +156,89 @@ dialog .actions { display: flex; justify-content: flex-end; gap: 8px; }
   <nav class="tabs" id="tabs"></nav>
   <span class="stats" id="stats"></span>
   <span class="spacer"></span>
-  <button id="btnLog" title="Uppdatera dagens utvecklingslogg i Obsidian">Dagens logg</button>
+  <button id="btnHelp" title="Förklaring av alla fält och knappar">?</button>
+  <button id="btnLog" title="Uppdatera dagens utvecklingslogg i Obsidian och öppna den">Dagens logg</button>
   <button class="orch" id="btnOrch">Orkestrator</button>
 </header>
+<div id="banner"></div>
 <main id="main">
   <section id="view"></section>
   <aside id="inspector"></aside>
 </main>
 <dialog id="dlg"><form method="dialog" id="dlgForm"></form></dialog>
+<dialog id="help"><div class="hhead"><h3>Så läser du devctl</h3><span class="spacer"></span><form method="dialog"><button>Stäng</button></form></div>
+<div class="hbody">
+<h4>Överst</h4>
+<dl>
+  <dt><span class="dot on"></span></dt><dd>Grön: appen har kontakt med servern. Röd: servern svarar inte.</dd>
+  <dt>Flikarna</dt><dd>Siffran efter varje flik: antal aktiva repos, tmux-panes, servrar, containrar igång och Local-Automation-uppgifter. ● vid Orkestrator betyder att den körs. ⌘1–⌘6 byter flik.</dd>
+  <dt class="muted small">27 worktrees · 8 panes …</dt><dd>Totalt över alla repos och hela datorn.</dd>
+  <dt><button class="sm">?</button></dt><dd>Den här hjälpen.</dd>
+  <dt><button class="sm">Dagens logg</button></dt><dd>Skriver dagens utvecklingslogg i Obsidian (branches som rörts, PR:er, vad som körs) och öppnar den. Uppdateras också automatiskt var 30:e minut.</dd>
+  <dt><button class="sm orch">Orkestrator</button></dt><dd>Startar eller öppnar den globala orkestratorn: en Claude-session som ser allt här och kan starta workers åt dig.</dd>
+</dl>
+
+<h4>Översikt: vyer</h4>
+<dl>
+  <dt><span class="seg"><button class="on">Aktiva</button></span></dt><dd>Repos där något körs, med commits eller ändringar de senaste 3 dagarna, eller med öppna PR:er.</dd>
+  <dt><span class="seg"><button>Inaktiva</button></span></dt><dd>Repos utan aktivitet de senaste 3 dagarna. Blir ett repo aktivt igen flyttas det automatiskt till Aktiva.</dd>
+  <dt><span class="seg"><button>Arkiv</button></span></dt><dd>Repos du har arkiverat. Börjar något köras i ett arkiverat repo visas det ändå under Aktiva, med märket <span class="badge">arkiverat</span>.</dd>
+  <dt>Filterrutan</dt><dd>Filtrerar på repo- eller branchnamn inom vyn.</dd>
+</dl>
+
+<h4>Repokortets huvud</h4>
+<dl>
+  <dt><b class="mono">Halcy-app</b></dt><dd>Repots namn (katalogens namn).</dd>
+  <dt><a>owner/repo ↗</a></dt><dd>Repot på GitHub. Öppnas i webbläsaren.</dd>
+  <dt><span class="badge pr">12 öppna PR</span></dt><dd>Öppna pull requests på GitHub. Klicka för att se dem.</dd>
+  <dt class="mono small muted">~/Desktop/…</dt><dd>Var repot ligger.</dd>
+  <dt><button class="sm">+ Worktree</button></dt><dd>Checkar ut en ny eller befintlig branch i en egen katalog bredvid repot (<span class="mono">repo.worktrees/branch</span>), så att du kan jobba på flera branches samtidigt.</dd>
+  <dt><button class="sm">+ Worker</button></dt><dd>Som + Worktree, men startar också Claude Code i ett eget tmux-fönster där, med den uppgift du skriver.</dd>
+  <dt><button class="sm">Graf</button></dt><dd>Commitgrafen över alla branches, i panelen till höger.</dd>
+  <dt><button class="sm">Arkivera</button></dt><dd>Gömmer repot från Aktiva/Inaktiva och från <span class="mono">devctl status</span>. Inget i repot ändras. <b>Återställ</b> tar tillbaka det.</dd>
+</dl>
+
+<h4>En rad per worktree (utcheckad branch)</h4>
+<dl>
+  <dt><b class="mono">feat/x</b></dt><dd>Branchen som är utcheckad, och under den katalogen.</dd>
+  <dt><span class="badge">huvud</span></dt><dd>Repots huvudkatalog. Den kan inte tas bort härifrån.</dd>
+  <dt><span class="badge warn">detached</span></dt><dd>Ingen branch är utcheckad, bara en enskild commit.</dd>
+  <dt><span class="badge bad">saknas</span></dt><dd>Git känner till worktreen men katalogen är borta. <b>Rensa</b> tar bort den ur git.</dd>
+  <dt><span class="badge ok">ren</span> / <span class="badge warn">±9</span></dt><dd>Inga ocommittade ändringar / antal filer med ocommittade ändringar.</dd>
+  <dt><span class="badge">↑6 ↓0</span></dt><dd>Commits före (ännu inte pushade) och efter (inte hämtade) remote-branchen.</dd>
+  <dt><span class="badge">lokal</span></dt><dd>Branchen finns bara på din dator, den är aldrig pushad.</dd>
+  <dt><span class="badge pr">PR #12 ✓</span></dt><dd>Branchens öppna PR. ✓ = godkänd, ✗ = ändringar begärda, "utkast" = draft.</dd>
+  <dt class="muted small">Commit · 22 hours ago</dt><dd>Senaste commit på branchen och när den gjordes.</dd>
+</dl>
+
+<h4>Vad som körs (chipsen)</h4>
+<dl>
+  <dt><span class="chip pane">▣ %42 pico Local-Automation:2</span></dt><dd>En tmux-pane som står i worktreen: pane-id, programmet som körs, session:fönster. Klicka för att se vad den visar och skriva till den.</dd>
+  <dt><span class="chip srv frontend">:8080 frontend</span></dt><dd>En lokal server som startats från worktreen: port och typ (grön frontend, orange backend, blå databas, turkos Docker). Klicka för att öppna den i webbläsaren.</dd>
+  <dt><span class="chip srv">Python · 12 processer · 67 portar</span></dt><dd>Många portar från samma program (t.ex. Jupyter-kärnor), ihopslagna. Klicka för att se dem i Servrar.</dd>
+  <dt><span class="chip ct">🐳 supabase · …</span></dt><dd>Docker/OrbStack-containrar vars projekt ligger i worktreen. Klicka för loggar, eller fliken Docker för alla.</dd>
+</dl>
+
+<h4>Knappar på raden</h4>
+<dl>
+  <dt><button class="sm">Worker</button></dt><dd>Startar Claude Code i ett nytt tmux-fönster i just den här worktreen, med en uppgift du skriver.</dd>
+  <dt><button class="sm">Terminal</button></dt><dd>Öppnar ett nytt tmux-fönster i katalogen och visar det i panelen till höger.</dd>
+  <dt><button class="sm">+ Anteckning</button></dt><dd>Skapar en anteckning för branchen i Obsidian (mål, anteckningar, status) och öppnar den. Står det <b>Anteckning</b> finns den redan.</dd>
+  <dt><button class="sm">Editor</button></dt><dd>Öppnar katalogen i din editor (VS Code som standard).</dd>
+  <dt><button class="sm">✕</button></dt><dd>Tar bort worktreens katalog. Branchen och dess commits finns kvar. Klicka två gånger för att bekräfta; har den ocommittade ändringar krävs ytterligare bekräftelse.</dd>
+  <dt class="muted small">▸ 28 branches utan worktree</dt><dd>Lokala branches som inte är utcheckade någonstans, med knappar för att checka ut dem eller starta en worker på dem.</dd>
+</dl>
+
+<h4>Övriga flikar</h4>
+<dl>
+  <dt>tmux</dt><dd>Alla sessioner, fönster och panes som karta eller träd. Skapa, döp om, dela, välj layout, lägg fönster under varandra och skapa lokala orkestratorfönster.</dd>
+  <dt>Servrar</dt><dd>Allt som lyssnar på en port: typ, process, repo och branch, och vilken pane som startade den. <span class="badge warn">öppen</span> = nåbar från nätverket, inte bara från datorn.</dd>
+  <dt>Docker</dt><dd>Containrar per projekt, med starta, stoppa, starta om och loggar.</dd>
+  <dt>Orkestrator</dt><dd>Chatt med den globala orkestratorn och listan över dess workers.</dd>
+  <dt>Automation</dt><dd>Local-Automation: dina schemalagda Claude-uppgifter, deras resultat och "Kör nu".</dd>
+</dl>
+<p class="muted small" style="margin-top:20px">Allt uppdateras automatiskt: tmux, servrar och Docker varannan sekund, git var 10:e, PR:er varannan minut.</p>
+</div></dialog>
 <div id="toast"></div>
 
 <script>
@@ -192,6 +276,17 @@ function toast(msg, ok = false) {
   clearTimeout(t._h); t._h = setTimeout(() => t.style.display = "none", 4500);
 }
 
+let serverStarted = 0;
+async function checkVersion() {
+  try {
+    const h = await (await fetch("/api/health")).json();
+    if (serverStarted && h.started !== serverStarted) location.reload();
+    serverStarted = h.started;
+  } catch {}
+}
+setInterval(checkVersion, 3000);
+checkVersion();
+
 async function refresh() {
   try {
     const j = await (await fetch("/api/state")).json();
@@ -224,8 +319,17 @@ function render() {
   if (location.hash.slice(1) !== tab) history.replaceState(null, "", "#" + tab);
   store.set("tab", tab);
   const v = $("#view");
+  renderBanner();
   ({ overview: renderOverview, tmux: renderTmux, servers: renderServers, docker: renderDocker, orchestrator: renderOrch, automation: renderAutomation }[tab] || renderOverview)(v);
   renderInspector();
+}
+
+// Varning när macOS inte låter devctl läsa mapparna där repos letas upp
+function renderBanner() {
+  const denied = Object.entries(S.errors || {}).filter(([k]) => k.startsWith("access:")).map(([k]) => short(k.slice(7)));
+  $("#banner").innerHTML = denied.length ? `<div style="margin:12px 20px 0;padding:10px 14px;border:1px solid #6a4a24;background:#2a1f12;border-radius:8px;display:flex;gap:12px;align-items:center">
+    <span>⚠️ devctl får inte läsa <b>${denied.map(esc).join(", ")}</b>, så repos där syns inte. Öppna Systeminställningar → Integritet och säkerhet → Filer och mappar och slå på <b>Skrivbordsmapp</b> under devctl.</span>
+    <span class="spacer"></span><button class="sm primary" data-act="privacy">Öppna Systeminställningar</button></div>` : "";
 }
 
 // ---------- chips ----------
@@ -259,19 +363,30 @@ function containerChips(names) {
 const ctChip = name => `<span class="chip ct" data-ct="${esc(name)}" title="Visa loggar">🐳 ${esc(name)}</span>`;
 
 // ---------- översikt ----------
+// Vilken vy ett repo hör till. Ett arkiverat repo där något körs visas ändå bland de aktiva.
+const repoGroup = r => r.archived && !r.busy ? "archive" : r.active ? "active" : "inactive";
+const VIEWS = [["active", "Aktiva"], ["inactive", "Inaktiva"], ["archive", "Arkiv"]];
+const VIEW_HINT = {
+  active: "Repos där något körs, med commits eller ändringar de senaste 3 dagarna, eller med öppna PR:er.",
+  inactive: "Repos utan aktivitet de senaste 3 dagarna. Arkivera dem du inte jobbar med så hålls listan kort.",
+  archive: "Arkiverade repos. Inget i repot ändras; de döljs bara här och i devctl status.",
+};
+
 function renderOverview(v) {
   const q = (opts.q || "").toLowerCase();
-  const repos = S.repos.filter(r => (opts.inactive || r.active) && (!q || r.name.toLowerCase().includes(q) ||
+  const view = VIEWS.some(([k]) => k === opts.repoView) ? opts.repoView : "active";
+  const count = k => S.repos.filter(r => repoGroup(r) === k).length;
+  const repos = S.repos.filter(r => repoGroup(r) === view && (!q || r.name.toLowerCase().includes(q) ||
     r.worktrees.some(w => (w.branch || "").toLowerCase().includes(q)) || r.branches.some(b => b.name.toLowerCase().includes(q))));
   // Repos med något igång först
   const busy = r => r.worktrees.reduce((a, w) => a + w.panes.length * 3 + w.servers.length * 2 + w.containers.length + (w.changes ? 1 : 0), 0);
   repos.sort((a, b) => busy(b) - busy(a) || b.lastUnix - a.lastUnix);
-  const hidden = S.repos.filter(r => !r.active).length;
+  const empty = { active: "Inga aktiva repos just nu.", inactive: "Inga inaktiva repos.", archive: "Arkivet är tomt. Arkivera repos med knappen Arkivera på repots kort." }[view];
   v.innerHTML = `<div class="toolbar">
+      <span class="seg">${VIEWS.map(([k, l]) => `<button data-rview="${k}" class="${view === k ? "on" : ""}">${l} <span class="muted">${count(k)}</span></button>`).join("")}</span>
       <input type="search" id="q" placeholder="Filtrera repo eller branch…" value="${esc(opts.q || "")}">
-      <label><input type="checkbox" data-opt="inactive" ${opts.inactive ? "checked" : ""}> visa inaktiva repos (${hidden})</label>
-      <span class="spacer"></span><span class="muted small">Ett repo räknas som aktivt om något körs i det, det har ändringar, öppna PR:er eller commits de senaste 3 dagarna.</span>
-    </div>` + (repos.length ? repos.map(repoCard).join("") : `<div class="empty">Inga repos matchar. Repos letas upp i rötterna i konfigurationen och i katalogerna där tmux-panes och servrar körs.</div>`);
+      <span class="spacer"></span><span class="muted small">${VIEW_HINT[view]}</span>
+    </div>` + (repos.length ? repos.map(repoCard).join("") : `<div class="empty">${q ? "Inga repos matchar filtret." : empty}</div>`);
 }
 
 function repoCard(r) {
@@ -280,25 +395,27 @@ function repoCard(r) {
   return `<div class="card">
     <div class="chead">
       <span class="cname">${esc(r.name)}</span>
+      ${r.archived ? `<span class="badge" title="Arkiverat, men visas eftersom något körs i det">arkiverat</span>` : ""}
       ${r.github ? `<a class="small" href="https://github.com/${esc(r.github)}" target="_blank" rel="noopener">${esc(r.github)} ↗</a>` : `<span class="muted small">ingen GitHub-remote</span>`}
       ${r.prs.length ? `<a class="badge pr" href="https://github.com/${esc(r.github)}/pulls" target="_blank" rel="noopener">${r.prs.length} öppna PR</a>` : ""}
       <span class="muted small mono">${esc(short(r.path))}</span>
       <span class="spacer"></span>
-      <button class="sm" data-act="wtAdd" data-repo="${esc(r.path)}">+ Worktree</button>
-      <button class="sm" data-act="workerNew" data-repo="${esc(r.path)}">+ Worker</button>
-      <button class="sm" data-act="graph" data-repo="${esc(r.path)}">Graf</button>
+      <button class="sm" data-act="wtAdd" data-repo="${esc(r.path)}" title="Skapa en ny worktree (egen katalog) för en ny eller befintlig branch">+ Worktree</button>
+      <button class="sm" data-act="workerNew" data-repo="${esc(r.path)}" title="Starta en Claude-worker på en branch, i en egen worktree">+ Worker</button>
+      <button class="sm" data-act="graph" data-repo="${esc(r.path)}" title="Visa commitgrafen över alla branches">Graf</button>
+      <button class="sm" data-act="archive" data-repo="${esc(r.path)}" data-archived="${r.archived ? "0" : "1"}" title="${r.archived ? "Visa repot i översikten igen" : "Göm repot från översikten. Inget i repot ändras."}">${r.archived ? "Återställ" : "Arkivera"}</button>
     </div>
     ${wts}
     ${others.length ? `<details class="branches" ${collapsed.has("b:" + r.path) ? "open" : ""} data-det="b:${esc(r.path)}">
-      <summary>${others.length} branches utan worktree</summary>
+      <summary title="Lokala branches som inte är utcheckade någonstans">${others.length} branches utan worktree</summary>
       <div class="blist">${others.map(b => `
         <span class="mono">${esc(b.name)}</span>
         <span class="muted">${esc(b.when)}</span>
         <span>${b.gone ? `<span class="badge bad">remote borta</span>` : b.ahead + b.behind ? `<span class="badge">↑${b.ahead} ↓${b.behind}</span>` : ""}
           ${b.pr ? `<a class="badge pr" href="${esc(b.pr.url)}" target="_blank" rel="noopener">PR #${b.pr.number}</a>` : ""}</span>
         <span class="commit">${esc(b.subject)}</span>
-        <span class="acts"><button class="sm" data-act="wtAddBranch" data-repo="${esc(r.path)}" data-branch="${esc(b.name)}">Worktree</button>
-          <button class="sm" data-act="workerBranch" data-repo="${esc(r.path)}" data-branch="${esc(b.name)}">Worker</button></span>`).join("")}
+        <span class="acts"><button class="sm" data-act="wtAddBranch" data-repo="${esc(r.path)}" data-branch="${esc(b.name)}" title="Checka ut branchen i en egen worktree">Worktree</button>
+          <button class="sm" data-act="workerBranch" data-repo="${esc(r.path)}" data-branch="${esc(b.name)}" title="Starta en Claude-worker på branchen">Worker</button></span>`).join("")}
       </div></details>` : ""}
   </div>`;
 }
@@ -309,26 +426,27 @@ function wtRow(r, w) {
   const running = [...w.panes.map(paneChip), ...serverChips(w.servers), ...containerChips(w.containers)].join("");
   return `<div class="wt ${busy ? "busy" : ""} ${w.missing ? "missing" : ""}">
     <div>
-      <div class="bname">${esc(b)} ${w.main ? `<span class="badge">huvud</span>` : ""} ${w.detached ? `<span class="badge warn">detached</span>` : ""} ${w.missing ? `<span class="badge bad">saknas</span>` : ""}</div>
+      <div class="bname">${esc(b)} ${w.main ? `<span class="badge" title="Repots huvudkatalog (den första worktreen)">huvud</span>` : ""} ${w.detached ? `<span class="badge warn" title="Ingen branch utcheckad, bara en commit">detached</span>` : ""} ${w.missing ? `<span class="badge bad" title="Katalogen finns inte längre (t.ex. en temporär mapp som raderats)">saknas</span>` : ""}</div>
       <div class="bpath">${esc(short(w.path))}</div>
     </div>
     <div>
       <div class="row">
-        ${w.changes ? `<span class="badge warn" title="Ocommittade ändringar">±${w.changes}</span>` : `<span class="badge ok">ren</span>`}
-        ${w.ahead || w.behind ? `<span class="badge" title="Mot ${esc(w.upstream)}">↑${w.ahead} ↓${w.behind}</span>` : ""}
-        ${!w.upstream && w.branch && !w.missing ? `<span class="badge" title="Ingen upstream">lokal</span>` : ""}
+        ${w.changes ? `<span class="badge warn" title="${w.changes} filer med ocommittade ändringar">±${w.changes}</span>` : `<span class="badge ok" title="Inga ocommittade ändringar">ren</span>`}
+        ${w.ahead || w.behind ? `<span class="badge" title="${w.ahead} commits före och ${w.behind} efter ${esc(w.upstream)}">↑${w.ahead} ↓${w.behind}</span>` : ""}
+        ${!w.upstream && w.branch && !w.missing ? `<span class="badge" title="Branchen finns bara lokalt (inte pushad)">lokal</span>` : ""}
         ${w.pr ? `<a class="badge pr" href="${esc(w.pr.url)}" target="_blank" rel="noopener" title="${esc(w.pr.title)}">PR #${w.pr.number}${w.pr.draft ? " utkast" : ""}${w.pr.review === "APPROVED" ? " ✓" : w.pr.review === "CHANGES_REQUESTED" ? " ✗" : ""}</a>` : ""}
       </div>
-      ${w.last.subject ? `<div class="commit" title="${esc(w.last.hash)} · ${esc(w.last.author)}">${esc(w.last.subject)} · ${esc(w.last.when)}</div>` : ""}
+      ${w.last.subject ? `<div class="commit" title="Senaste commit: ${esc(w.last.hash)} av ${esc(w.last.author)}">${esc(w.last.subject)} · ${esc(w.last.when)}</div>` : ""}
     </div>
     <div class="row">${running || `<span class="muted small">inget igång</span>`}</div>
     <div class="acts">
       ${w.missing ? "" : `
-      <button class="sm" data-act="worker" data-repo="${esc(r.path)}" data-branch="${esc(w.branch)}" ${w.branch ? "" : "disabled"} title="Starta en Claude-worker i denna worktree">Worker</button>
-      <button class="sm" data-act="term" data-path="${esc(w.path)}" title="Nytt tmux-fönster här">Terminal</button>
-      <button class="sm" data-act="note" data-repo="${esc(r.path)}" data-branch="${esc(w.branch)}" ${w.branch && S.vault ? "" : "disabled"} title="${w.note ? "Öppna anteckningen i Obsidian" : "Skapa anteckning i Obsidian"}">${w.note ? "📝" : "+📝"}</button>
-      <button class="sm" data-act="editor" data-path="${esc(w.path)}" title="Öppna i editorn">⌘</button>`}
-      ${w.main ? "" : `<button class="sm danger" data-act="wtRemove" data-path="${esc(w.path)}" data-changes="${w.changes}" title="Ta bort worktreen (branchen finns kvar)">✕</button>`}
+      <button class="sm" data-act="worker" data-repo="${esc(r.path)}" data-branch="${esc(w.branch)}" ${w.branch ? "" : "disabled"} title="Starta Claude Code i ett eget tmux-fönster i den här worktreen, med en uppgift">Worker</button>
+      <button class="sm" data-act="term" data-path="${esc(w.path)}" title="Öppna ett nytt tmux-fönster i den här katalogen">Terminal</button>
+      <button class="sm" data-act="note" data-repo="${esc(r.path)}" data-branch="${esc(w.branch)}" ${w.branch && S.vault ? "" : "disabled"} title="${w.note ? "Öppna branchens anteckning i Obsidian" : "Skapa en anteckning för branchen i Obsidian"}">${w.note ? "Anteckning" : "+ Anteckning"}</button>
+      <button class="sm" data-act="editor" data-path="${esc(w.path)}" title="Öppna katalogen i editorn">Editor</button>`}
+      ${w.missing ? `<button class="sm" data-act="prune" data-repo="${esc(r.path)}" title="Ta bort git:s uppgifter om worktrees vars katalog inte finns längre">Rensa</button>`
+        : w.main ? "" : `<button class="sm danger" data-act="wtRemove" data-path="${esc(w.path)}" data-changes="${w.changes}" title="Ta bort worktreens katalog. Branchen och dess commits finns kvar.">✕</button>`}
     </div>
   </div>`;
 }
@@ -635,6 +753,8 @@ document.addEventListener("click", async e => {
   const t = e.target;
   const tb = t.closest("[data-tab]"); if (tb) { tab = tb.dataset.tab; store.set("tab", tab); lastKey = ""; return render(); }
   const tgo = t.closest("[data-tabgo]"); if (tgo) { tab = tgo.dataset.tabgo; store.set("tab", tab); return render(); }
+  const rv = t.closest("[data-rview]"); if (rv) { opts.repoView = rv.dataset.rview; store.set("opts", opts); return render(); }
+  if (t.closest("#btnHelp")) return $("#help").showModal();
   const tv = t.closest("[data-tview]"); if (tv) { opts.tmuxView = tv.dataset.tview; store.set("opts", opts); return render(); }
   const tg = t.closest("[data-tog]"); if (tg) { const id = tg.dataset.tog; collapsed.has(id) ? collapsed.delete(id) : collapsed.add(id); return render(); }
   if (t.id === "iClose") return closeInspect();
@@ -688,6 +808,10 @@ document.addEventListener("click", async e => {
     case "docker": if (d.op === "stop" && !confirm2()) return; b.disabled = true; return api("docker", { op: d.op, id: d.id }).finally(() => b.disabled = false);
     case "autoStart": { b.disabled = true; await api("automation_start").finally(() => b.disabled = false); return toast("Local-Automation startat", true); }
     case "autoReload": { const f = $("#autoFrame"); if (f) f.src = f.src; return; }
+    case "archive": { const r = repoOf(d.repo); await api("archive", { repo: d.repo, archived: d.archived === "1" });
+      return toast(d.archived === "1" ? `${r.name} arkiverat` : `${r.name} återställt`, true); }
+    case "privacy": return api("open_privacy");
+    case "prune": return api("worktree_prune", { repo: d.repo });
     case "orchStart": { const o = await api("orchestrator_start"); tab = "orchestrator"; store.set("tab", tab); return; }
     case "attachOrch": return api("attach", { session: S.orchestrator.session });
     case "brief": return openInspect({ kind: "text", title: "Orkestratorns instruktioner", load: async () => (await api("brief", {}, true)).text });

@@ -29,6 +29,8 @@ swift "$HERE/make-icon.swift" "$TMP/AppIcon.iconset"
 iconutil -c icns -o "$APP/Contents/Resources/AppIcon.icns" "$TMP/AppIcon.iconset"
 
 sed "s/__VERSION__/$VERSION/g" "$HERE/Info.plist" > "$APP/Contents/Info.plist"
+# Fingeravtryck av skalets kod; make install-app byter bara appen när det ändras
+cat "$HERE"/*.swift "$HERE/Info.plist" | shasum | cut -c1-12 > "$APP/Contents/Resources/shell.sha"
 
 # Ad hoc-signering räcker för att köra lokalt; för distribution krävs Developer ID + notarisering
 codesign --force --deep --sign - "$APP" >/dev/null

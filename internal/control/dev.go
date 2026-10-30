@@ -598,3 +598,28 @@ func (c *Controller) automationStart(Args) (any, error) {
 	out, err := sysx.Combined(30*time.Second, script)
 	return map[string]string{"output": strings.TrimSpace(out)}, err
 }
+
+// worktreePrune tar bort git:s uppgifter om worktrees vars katalog inte längre finns.
+func (c *Controller) worktreePrune(a Args) (any, error) {
+	r, err := FindRepo(c.col.Snapshot(), a.S("repo"))
+	if err != nil {
+		return nil, err
+	}
+	_, err = git(r.Path, "worktree", "prune")
+	return nil, err
+}
+
+// archive gömmer ett repo från översikten (eller återställer det). Inget i repot ändras.
+func (c *Controller) archive(a Args) (any, error) {
+	r, err := FindRepo(c.col.Snapshot(), a.S("repo"))
+	if err != nil {
+		return nil, err
+	}
+	return nil, config.SetArchived(r.Path, a.B("archived", true))
+}
+
+// openPrivacy öppnar Systeminställningar → Integritet och säkerhet → Filer och mappar.
+func (c *Controller) openPrivacy(Args) (any, error) {
+	_, err := sysx.Run(10*time.Second, "open", "x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders")
+	return nil, err
+}

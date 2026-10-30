@@ -7,6 +7,8 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -34,6 +36,8 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	w.WriteHeader(code)
 	_ = json.NewEncoder(w).Encode(v)
 }
+
+var started = time.Now()
 
 func Run(cfg config.Config) error {
 	col := state.NewCollector(cfg)
@@ -65,7 +69,7 @@ func Run(cfg config.Config) error {
 		_, _ = w.Write(web.Index)
 	})
 	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, 200, map[string]any{"ok": true, "port": cfg.Port})
+		writeJSON(w, 200, map[string]any{"ok": true, "port": cfg.Port, "started": started.Unix()})
 	})
 	mux.HandleFunc("/api/state", func(w http.ResponseWriter, r *http.Request) {
 		if !hostOK(r) {
@@ -97,6 +101,9 @@ func Run(cfg config.Config) error {
 		writeJSON(w, 200, map[string]any{"ok": true, "result": res})
 	})
 
+	// Pid-filen gör att `devctl stop` (och make install) kan stoppa servern oavsett vem som startade den;
+	// appen startar då om den med den nya binären.
+	_ = os.WriteFile(filepath.Join(config.CacheDir(), "server.pid"), []byte(fmt.Sprint(os.Getpid())), 0o644)
 	addr := fmt.Sprintf("127.0.0.1:%d", cfg.Port)
 	log.Printf("devctl körs på http://localhost:%d", cfg.Port)
 	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}

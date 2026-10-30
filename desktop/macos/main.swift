@@ -49,6 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         showMessage("Startar devctl…")
         DispatchQueue.global().async { self.ensureServer() }
         statusBar = StatusBar(port: port, app: self)
+        startWatchdog()
     }
 
     /// Visar fönstret, eventuellt på en viss flik.
@@ -93,11 +94,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         return ok
     }
 
+    // MARK: motorn
+    //
+    // Appen är bara ett skal. Motorn (servern + webbgränssnittet) är devctl-binären, helst
+    // ~/.local/bin/devctl så att den kan byggas om utan att appen ändras. Då behåller appen sin
+    // identitet och macOS behöver inte fråga om behörigheter (t.ex. mappen Skrivbord) igen.
+    // Appens egen kopia används bara om ingen motor är installerad.
+
+    var starting = false
+    var engineMTime: Date?
+
+    func enginePath() -> String? {
+        let candidates = [ProcessInfo.processInfo.environment["DEVCTL_ENGINE"], home + "/.local/bin/devctl",
+                          Bundle.main.path(forResource: "devctl", ofType: nil)]
+        return candidates.compactMap { $0 }.first { FileManager.default.isExecutableFile(atPath: $0) }
+    }
+
+    func mtime(_ path: String) -> Date? {
+        (try? FileManager.default.attributesOfItem(atPath: path))?[.modificationDate] as? Date
+    }
+
     func ensureServer() {
+        DispatchQueue.main.sync { starting = true }
+        defer { DispatchQueue.main.async { self.starting = false } }
         if !healthy() {
-            guard let exe = Bundle.main.path(forResource: "devctl", ofType: nil) else {
-                return fail("Hittar inte devctl i appen.")
-            }
+            guard let exe = enginePath() else { return fail("Hittar ingen devctl-motor.") }
             let p = Process()
             p.executableURL = URL(fileURLWithPath: exe)
             p.arguments = ["serve"]
@@ -116,6 +137,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             }
             do { try p.run() } catch { return fail("Kunde inte starta devctl: \(error.localizedDescription)") }
             server = p
+            engineMTime = mtime(exe)
             var up = false
             for _ in 0..<60 where !up {
                 Thread.sleep(forTimeInterval: 0.2)
@@ -124,6 +146,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             if !up { return fail("devctl startade inte. Se ~/.cache/devctl/server.log") }
         }
         DispatchQueue.main.async { self.webView.load(URLRequest(url: self.base)) }
+    }
+
+    /// Vakt: startar om motorn om den har stoppats eller om en ny version installerats.
+    func startWatchdog() {
+        Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
+            guard let self, !self.starting else { return }
+            let ours = self.server
+            DispatchQueue.global().async {
+                if let ours, ours.isRunning, let exe = ours.executableURL?.path,
+                   let m = self.mtime(exe), let old = self.engineMTime, m != old {
+                    ours.terminate()
+                    ours.waitUntilExit()
+                }
+                if !self.healthy() { self.ensureServer() }
+            }
+        }
+    }
+
+    @objc func restartEngine() {
+        server?.terminate()
+        showMessage("Startar om devctl…")
+        DispatchQueue.global().async {
+            self.server?.waitUntilExit()
+            self.ensureServer()
+        }
     }
 
     func fail(_ msg: String) {
@@ -225,6 +272,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             item("Markera alla", #selector(NSText.selectAll(_:)), "a"),
         ])
         var view = [item("Ladda om", #selector(reload), "r", target: self),
+                    item("Starta om motorn", #selector(restartEngine), "r", [.command, .shift], target: self),
                     item("Öppna i webbläsaren", #selector(openInBrowser), "o", [.command, .shift], target: self),
                     .separator()]
         for (i, (tab, title)) in [("overview", "Översikt"), ("tmux", "tmux"), ("servers", "Servrar"),

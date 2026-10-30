@@ -29,14 +29,20 @@ inte redan körs (och stänger den när du avslutar, om appen startade den). En 
 hur många branches som har något igång och ger snabb åtkomst till servrar, worktrees, orkestratorn
 och Local-Automation.
 
-Första gången frågar macOS om appen får läsa mapparna där dina repos ligger (t.ex. Skrivbord).
-Svara Tillåt; annars hittar servern inga repos. Appen är ad hoc-signerad, så frågan kommer igen
-efter varje ombyggnad. Länkar till GitHub
-och Obsidian öppnas i respektive program. ⌘1–⌘5 byter flik, ⌘R laddar om.
+**Skal och motor.** Appen är ett tunt skal som nästan aldrig ändras. Motorn (servern och hela
+webbgränssnittet) är `~/.local/bin/devctl`. Skalet startar motorn, startar om den när en ny version
+installerats och laddar då om fönstret. Eftersom skalet är oförändrat behåller det de behörigheter
+macOS gett det (t.ex. att läsa mappen Skrivbord), så du behöver bara godkänna en gång.
 
 ```bash
-make install-app     # bygger dist/Devctl.app, kopierar till /Applications och installerar CLI:t
+make install       # ny motor; appen byter till den inom några sekunder
+make install-app   # som ovan, och byter appskalet bara om dess egen kod ändrats
 ```
+
+Första gången frågar macOS om appen får läsa mapparna där dina repos ligger. Svara Tillåt. Har du
+nekat visar appen en varning med en knapp till Systeminställningar → Integritet och säkerhet →
+Filer och mappar. Länkar till GitHub
+och Obsidian öppnas i respektive program. ⌘1–⌘5 byter flik, ⌘R laddar om.
 
 **Ladda ned färdigbyggd:** under [Releases](https://github.com/erikjin-halcy/Local-Development/releases)
 finns `Devctl-<version>-macos.zip` (appen) och `devctl-<version>-macos-universal.tar.gz` (bara CLI:t),
@@ -110,6 +116,13 @@ för agenter. Den globala orkestratorn styr allt genom dem.
 - `automation`: Local-Automations lokala gränssnitt (`url`), som visas i Automation-fliken. `cloudURL`
   ger en genväg till molnappen och `dir` gör att devctl kan starta gränssnittet om det inte körs.
 - `logEveryMinutes`: hur ofta dagens logg uppdateras medan servern körs (0 = bara på begäran).
+
+## Översikt: aktiva, inaktiva och arkiv
+
+Översikten visar som standard bara **aktiva** repos: där något körs, med commits eller ändringar
+de senaste 3 dagarna, eller med öppna PR:er. **Inaktiva** är resten. **Arkivera** gömmer ett repo
+(sparas i `~/.config/devctl/archive.json`, inget i repot ändras). Börjar något köras i ett arkiverat
+repo visas det ändå bland de aktiva. Knappen **?** i appen förklarar alla fält och knappar.
 
 ## Hur det fungerar
 

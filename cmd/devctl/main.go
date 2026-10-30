@@ -367,7 +367,7 @@ func printStatus(s state.Snapshot, all bool) {
 	fmt.Println()
 	hidden := 0
 	for _, r := range s.Repos {
-		if !r.Active && !all {
+		if (!r.Active || (r.Archived && !r.Busy)) && !all {
 			hidden++
 			continue
 		}
@@ -421,7 +421,7 @@ func printStatus(s state.Snapshot, all bool) {
 		}
 	}
 	if hidden > 0 {
-		fmt.Printf("(%d inaktiva repos dolda, --all visar dem)\n", hidden)
+		fmt.Printf("(%d inaktiva eller arkiverade repos dolda, --all visar dem)\n", hidden)
 	}
 
 	fmt.Println("\nServrar utan repo:")

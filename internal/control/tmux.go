@@ -74,7 +74,8 @@ func (c *Controller) actions() map[string]action {
 		"keys": c.keys, "capture": c.capture, "attach": c.attach, "set_parent": c.setParent,
 		"orchestrator_window": c.orchestratorWindow,
 		// git
-		"worktree_add": c.worktreeAdd, "worktree_remove": c.worktreeRemove, "worker_start": c.workerStart,
+		"worktree_add": c.worktreeAdd, "worktree_remove": c.worktreeRemove, "worktree_prune": c.worktreePrune,
+		"archive": c.archive, "open_privacy": c.openPrivacy, "worker_start": c.workerStart,
 		"open_worktree": c.openWorktree, "graph": c.graph, "editor": c.editor,
 		// processer och Docker
 		"kill_process": c.killProcess, "docker": c.docker, "docker_logs": c.dockerLogs,
