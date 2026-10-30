@@ -76,6 +76,9 @@ main.inspecting { grid-template-columns: minmax(0, 1fr) 460px; }
 .wt.missing .acts { visibility: visible; }
 details.branches { padding: 6px 14px 10px; }
 details.branches summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+dl.agentinfo { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; padding: 10px 14px 4px; font-size: 12px; }
+dl.agentinfo dt { color: var(--muted); }
+dl.agentinfo dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .blist { display: flex; flex-direction: column; margin-top: 8px; font-size: 12px; }
 .blist .brow { display: grid; grid-template-columns: minmax(200px, 280px) 110px auto minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 2px 6px; border-radius: 5px; }
 .blist .brow:hover { background: var(--panel2); }
@@ -312,7 +315,7 @@ dialog#help { width: min(860px, 94vw); max-height: 88vh; }
   <dt>Servrar</dt><dd>Allt som lyssnar på en port: typ, process, repo och branch, och vilken pane som startade den. <span class="badge warn">öppen</span> = nåbar från nätverket, inte bara från datorn.</dd>
   <dt>Docker</dt><dd>Containrar per projekt, med starta, stoppa, starta om och loggar.</dd>
   <dt>Orkestrator</dt><dd>Chatt med den globala orkestratorn och listan över dess workers.</dd>
-  <dt>Agenter</dt><dd>Agenter granskar dina repos i bakgrunden med Claude Code (t.ex. 🛡 Säkerhet: nya ändringar mot säkerhetsprinciper, repots regler och företagsreglerna) och skickar fynd till orkestratorn. Här ser du fynden per repo och kan köra en agent direkt, markera fynd som hanterade eller ignorerade, skapa nya agenter och redigera företagsreglerna.</dd>
+  <dt>Agenter</dt><dd>Agenter granskar dina repos i bakgrunden med Claude Code (t.ex. 🛡 Säkerhet: nya ändringar mot säkerhetsprinciper, repots regler och företagsreglerna) och skickar fynd till orkestratorn. Här ser du varje agent med status, schema och vad den granskar, ändrar inställningar, kör den direkt, skapar nya agenter och redigerar företagsreglerna. Fynden ligger under respektive agent bakom Fynd (N), med ett eget statusfilter.</dd>
   <dt>⌘K</dt><dd>Öppnar en liten chatt mot orkestratorn från vilken flik som helst, t.ex. "öppna Halcy-appen", "kör Starta allt i Halcy-app" eller "vad gör alla sessioner?". I orkestratorns svar är portar (:8080) och panes (%12) klickbara.</dd>
   <dt>Automation</dt><dd>Local-Automation: dina schemalagda Claude-uppgifter, deras resultat och "Kör nu".</dd>
 </dl>
@@ -873,55 +876,76 @@ setInterval(() => loadAgents(), 10000);
 loadAgents();
 
 const SEV = { "hög": "bad", "medel": "warn", "låg": "" };
+const FSHOW = [["öppen", "Öppna"], ["hanterad", "Hanterade"], ["ignorerad", "Ignorerade"], ["alla", "Alla"]];
+const reposText = r => Array.isArray(r) ? r.join(", ") : r === "all" ? "all" : "active";
+const reposLabel = r => Array.isArray(r) ? (r.length ? r.join(", ") : "inga repos") : r === "all" ? "alla repos som inte är arkiverade" : "aktiva repos";
+const everyLabel = e => (m => m ? `${m[1]} ${{ m: "min", h: "tim", s: "s" }[m[2]] || m[2]}` : e)(/^(\d+)([smh])$/.exec(e || ""));
+
+function agentFindings(a) {
+  const all = a.state?.findings || [];
+  const show = (opts.agentShowBy || {})[a.name] || "öppen";
+  const fs = all.filter(f => show === "alla" || f.status === show);
+  const byRepo = {};
+  for (const f of fs) (byRepo[`${f.repo}@${f.branch}`] ||= []).push(f);
+  const open = all.filter(f => f.status === "öppen").length;
+  const det = "f:" + a.name;
+  return `<details class="branches" ${collapsed.has(det) ? "open" : ""} data-det="${esc(det)}">
+    <summary>Fynd (${all.length})${open ? ` · <span style="color:var(--bad)">${open} öppna</span>` : ""}</summary>
+    <div class="row" style="gap:6px;margin:8px 0">
+      <span class="seg">${FSHOW.map(([k, l]) => `<button data-ashow="${k}" data-name="${esc(a.name)}" class="${show === k ? "on" : ""}">${l} <span class="muted">${k === "alla" ? all.length : all.filter(f => f.status === k).length}</span></button>`).join("")}</span>
+    </div>
+    ${Object.entries(byRepo).map(([rb, list]) => `<div style="padding:4px 0 10px"><div class="small mono" style="color:var(--ok);margin-bottom:4px">⎇ ${esc(rb)}</div>
+      ${list.map(f => `<div class="finding">
+        <span class="badge ${SEV[f.severity] || ""}">${esc(f.severity)}</span>
+        <div><div><b class="mono small">${esc(f.file)}${f.line ? ":" + f.line : ""}</b> <span class="muted small">· ${esc(f.rule)} · ${esc(f.source || "")} · ${esc(f.found)} · ${esc(f.id)}</span></div>
+          <div class="small">${esc(f.finding)}</div>
+          ${f.suggestion ? `<div class="small muted">→ ${esc(f.suggestion)}</div>` : ""}</div>
+        <span class="row" style="gap:4px;align-self:start">
+          ${f.status === "öppen" ? `<button class="sm" data-act="findingNotify" data-id="${esc(f.id)}" title="Be orkestratorn hantera fyndet">Till orkestratorn</button>
+            <button class="sm" data-act="finding" data-op="resolve" data-id="${esc(f.id)}">Hanterad</button>
+            <button class="sm" data-act="finding" data-op="ignore" data-id="${esc(f.id)}" title="Inte ett problem; visas inte igen">Ignorera</button>`
+          : `<span class="badge">${esc(f.status)}</span><button class="sm" data-act="finding" data-op="reopen" data-id="${esc(f.id)}">Öppna igen</button>`}
+        </span></div>`).join("")}</div>`).join("") || `<div class="muted small">${show === "öppen" ? "Inga öppna fynd." : "Inga fynd."}</div>`}
+  </details>`;
+}
+
 function renderAgents(v) {
   if (!agentsData) { v.innerHTML = `<div class="empty">Laddar agenter…</div>`; return; }
-  const show = opts.agentShow || "öppen";
   const html = agentsData.agents.map(a => {
     const st = a.state || {};
-    const fs = (st.findings || []).filter(f => show === "alla" || f.status === show);
-    const open = (st.findings || []).filter(f => f.status === "öppen").length;
-    const byRepo = {};
-    for (const f of fs) (byRepo[`${f.repo}@${f.branch}`] ||= []).push(f);
     const scans = Object.entries(st.scans || {});
+    const row = (k, val) => `<dt>${k}</dt><dd>${val}</dd>`;
     return `<div class="card">
       <div class="chead">
         <span class="cname">${esc(a.icon || "🤖")} ${esc(a.label)}</span>
-        ${a.error ? `<span class="badge bad" title="${esc(a.error)}">fel i filen</span>` : `<span class="badge ${a.enabled ? "ok" : ""}">${a.enabled ? "på · var " + esc(a.every) : "av"}</span>`}
+        ${a.error ? `<span class="badge bad" title="${esc(a.error)}">fel i filen</span>` : `<span class="badge ${a.enabled ? "ok" : ""}">${a.enabled ? "på" : "av"}</span>`}
         ${st.running ? `<span class="badge warn">granskar ${esc(st.current || "")} …</span>` : ""}
-        ${open ? `<span class="badge bad">${open} öppna fynd</span>` : ""}
-        <span class="muted small">${esc(a.description || "")}</span>
         <span class="spacer"></span>
         <span class="row" style="gap:4px">
-          <button class="sm" data-act="agentRun" data-name="${esc(a.name)}" ${st.running ? "disabled" : ""} title="Granska alla repos som omfattas nu, även de som inte ändrats">Kör nu</button>
-          ${a.error ? "" : `<button class="sm" data-act="agentToggle" data-name="${esc(a.name)}" data-on="${a.enabled ? "0" : "1"}">${a.enabled ? "Stäng av" : "Slå på"}</button>`}
-          <button class="sm" data-act="agentEdit" data-name="${esc(a.name)}" title="${esc(a.file)}">Redigera</button>
+          ${a.error ? "" : `<button class="sm" data-act="agentRun" data-name="${esc(a.name)}" ${st.running ? "disabled" : ""} title="Granska alla repos som omfattas nu, även de som inte ändrats">Kör nu</button>
+          <button class="sm" data-act="agentToggle" data-name="${esc(a.name)}" data-on="${a.enabled ? "0" : "1"}">${a.enabled ? "Stäng av" : "Slå på"}</button>
+          <button class="sm" data-act="agentSettings" data-name="${esc(a.name)}">Inställningar</button>`}
+          <button class="sm" data-act="agentEdit" data-name="${esc(a.name)}" title="Öppna ${esc(a.file)} (prompt, verktyg, regler)">Redigera fil</button>
         </span>
       </div>
-      <div style="padding:8px 14px" class="muted small">
-        Senast ${esc(st.lastRun || "aldrig")}${st.error ? ` · <span style="color:var(--bad)">${esc(st.error)}</span>` : ""}
-        · skickar fynd från <b>${esc(a.notify)}</b> och uppåt till orkestratorn
-        ${scans.length ? ` · granskat: ${scans.map(([p, sc]) => `<span title="${esc(sc.summary || sc.error || "")}">${esc(p.split("/").pop())} ${esc(sc.time)}${sc.error ? " ✗" : ""}</span>`).join(", ")}` : ""}
-      </div>
-      ${Object.entries(byRepo).map(([rb, list]) => `<div style="padding:4px 14px 10px"><div class="small mono" style="color:var(--ok);margin-bottom:4px">⎇ ${esc(rb)}</div>
-        ${list.map(f => `<div class="finding">
-          <span class="badge ${SEV[f.severity] || ""}">${esc(f.severity)}</span>
-          <div><div><b class="mono small">${esc(f.file)}${f.line ? ":" + f.line : ""}</b> <span class="muted small">· ${esc(f.rule)} · ${esc(f.source || "")} · ${esc(f.found)} · ${esc(f.id)}</span></div>
-            <div class="small">${esc(f.finding)}</div>
-            ${f.suggestion ? `<div class="small muted">→ ${esc(f.suggestion)}</div>` : ""}</div>
-          <span class="row" style="gap:4px;align-self:start">
-            ${f.status === "öppen" ? `<button class="sm" data-act="findingNotify" data-id="${esc(f.id)}" title="Be orkestratorn hantera fyndet">Till orkestratorn</button>
-              <button class="sm" data-act="finding" data-op="resolve" data-id="${esc(f.id)}">Hanterad</button>
-              <button class="sm" data-act="finding" data-op="ignore" data-id="${esc(f.id)}" title="Inte ett problem; visas inte igen">Ignorera</button>`
-            : `<span class="badge">${esc(f.status)}</span><button class="sm" data-act="finding" data-op="reopen" data-id="${esc(f.id)}">Öppna igen</button>`}
-          </span></div>`).join("")}</div>`).join("") || `<div class="muted small" style="padding:0 14px 12px">${show === "öppen" ? "Inga öppna fynd." : "Inga fynd."}</div>`}
+      ${a.error ? `<div style="padding:8px 14px" class="small" ><span style="color:var(--bad)">${esc(a.error)}</span><div class="muted mono">${esc(a.file)}</div></div>` : `
+      <dl class="agentinfo">
+        ${a.description ? row("Gör", esc(a.description)) : ""}
+        ${row("Schema", `var ${esc(everyLabel(a.every))}${a.onlyOnChanges ? ", bara worktrees som ändrats sedan förra granskningen" : ", alla worktrees varje gång"}`)}
+        ${row("Granskar", esc(reposLabel(a.repos)))}
+        ${a.rules?.length ? row("Regler", a.rules.map(r => `<span class="mono" title="${esc(r)}">${esc(r.split("/").pop())}</span>`).join(", ")) : ""}
+        ${row("Orkestratorn", a.notify === "aldrig" ? "får inga fynd" : `får fynd med allvarlighet <b>${esc(a.notify)}</b> och uppåt`)}
+        ${row("Verktyg", `<span class="mono">${esc((a.tools || []).join(", ") || "–")}</span>`)}
+        ${a.model ? row("Modell", `<span class="mono">${esc(a.model)}</span>`) : ""}
+        ${row("Senast", `${esc(st.lastRun || "aldrig")}${st.error ? ` · <span style="color:var(--bad)">${esc(st.error)}</span>` : ""}${scans.length ? ` · granskat: ${scans.map(([p, sc]) => `<span title="${esc(sc.summary || sc.error || "")}">${esc(p.split("/").pop())} ${esc(sc.time)}${sc.error ? " ✗" : ""}</span>`).join(", ")}` : ""}`)}
+      </dl>
+      ${agentFindings(a)}`}
     </div>`;
   }).join("");
   v.innerHTML = `<div class="toolbar">
-      <span class="muted small">Visa fynd:</span>
-      <span class="seg" title="Filtrerar vilka fynd som visas under varje agent">${(all => [["öppen", "Öppna"], ["hanterad", "Hanterade"], ["ignorerad", "Ignorerade"], ["alla", "Alla"]].map(([k, l]) => `<button data-ashow="${k}" class="${show === k ? "on" : ""}">${l} <span class="muted">${k === "alla" ? all.length : all.filter(f => f.status === k).length}</span></button>`).join(""))(agentsData.agents.flatMap(a => a.state?.findings || []))}</span>
       <button class="sm" data-act="agentNew">+ Ny agent</button>
       <button class="sm" data-act="agentEdit" data-name="rules" title="${esc(agentsData.rules)}">Företagsregler</button>
-      <span class="spacer"></span><span class="muted small">Agenter granskar dina repos i bakgrunden med Claude Code och skickar fynd till orkestratorn.</span>
+      <span class="spacer"></span><span class="muted small">Agenter som lever i devctl. De granskar dina repos i bakgrunden med Claude Code och skickar fynd till orkestratorn.</span>
     </div>` + (html || `<div class="empty">Inga agenter.</div>`);
 }
 
@@ -1295,7 +1319,7 @@ document.addEventListener("click", async e => {
   if ($("#menu") && !t.closest("#menu") && !t.closest('[data-act="actions"]')) closeMenu();
   const tb = t.closest("[data-tab]"); if (tb) { tab = tb.dataset.tab; store.set("tab", tab); lastKey = ""; return render(); }
   const tgo = t.closest("[data-tabgo]"); if (tgo) { tab = tgo.dataset.tabgo; store.set("tab", tab); return render(); }
-  const as = t.closest("[data-ashow]"); if (as) { opts.agentShow = as.dataset.ashow; store.set("opts", opts); return renderAgents($("#view")); }
+  const as = t.closest("[data-ashow]"); if (as) { (opts.agentShowBy ||= {})[as.dataset.name] = as.dataset.ashow; store.set("opts", opts); return renderAgents($("#view")); }
   const oc = t.closest("[data-ochip]");
   if (oc) { const v = oc.dataset.ochip; return v.startsWith("%") ? openInspect({ kind: "pane", id: v }) : api("open", { target: v }); }
   if (t.id === "qchatClose") return toggleQuickChat(false);
@@ -1391,6 +1415,18 @@ document.addEventListener("click", async e => {
     case "parked": return api("open_parked", { repo: d.repo });
     case "agentRun": { b.disabled = true; await api("agent_run", { name: d.name }); toast("Agenten granskar i bakgrunden", true); return setTimeout(() => loadAgents(true), 1500); }
     case "agentToggle": await api("agent_toggle", { name: d.name, enabled: d.on === "1" }); return loadAgents(true);
+    case "agentSettings": {
+      const a = agentsData.agents.find(x => x.name === d.name); if (!a) return;
+      return form(`Inställningar: ${a.label}`, [
+        { key: "description", label: "Beskrivning", value: a.description || "" },
+        { key: "every", label: "Schema (hur ofta, minst 10m)", value: a.every, list: ["30m", "1h", "2h", "6h", "12h", "24h"] },
+        { key: "onlyOnChanges", label: "Vilka worktrees", type: "select", value: String(!!a.onlyOnChanges), options: [["true", "Bara de som ändrats sedan förra granskningen"], ["false", "Alla varje gång"]] },
+        { key: "repos", label: "Repos (active, all eller en lista: Halcy-app, Dentio)", value: reposText(a.repos), list: ["active", "all", ...S.repos.map(r => r.name)] },
+        { key: "notify", label: "Skicka fynd till orkestratorn från", type: "select", value: a.notify, options: [["hög", "hög"], ["medel", "medel och uppåt"], ["låg", "låg och uppåt (alla)"], ["aldrig", "aldrig"]] },
+        { key: "model", label: "Modell (tom = standard)", value: a.model || "", ph: "t.ex. sonnet" },
+      ], "Spara", async x => { try { await api("agent_settings", { name: a.name, ...x }); toast("Sparat", true); } finally { loadAgents(true); } },
+      `Prompt, verktyg och regelfiler ändrar du i filen med Redigera fil.`);
+    }
     case "agentEdit": { const r = await api("agent_edit", { name: d.name }); return toast(`Öppnar ${short(r.path)}`, true); }
     case "agentNew": return form("Ny agent", [{ key: "label", label: "Namn", ph: "t.ex. Beroenden, Tester, Dokumentation" }], "Skapa", async x => { const r = await api("agent_new", x); toast(`Skapad: ${short(r.path)}. Skriv prompten och slå på den.`, true); loadAgents(true); });
     case "finding": await api("agent_finding", { op: d.op, id: d.id }); return loadAgents(true);

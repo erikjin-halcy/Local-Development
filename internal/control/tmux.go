@@ -80,7 +80,7 @@ func (c *Controller) actions() map[string]action {
 		"kill_processes": c.killProcesses, "open_parked": c.openParked, "orch_history": c.orchHistory, "orchestrator_reload": c.orchestratorReload,
 		"commits": c.commits, "cloud_push": c.cloudPush, "cloud_status": c.cloudStatus, "open": c.openTarget, "stop_port": c.stopPort, "sessions": c.sessionsAction, "summarize": c.summarize,
 		"agents": c.agentsList, "agent_run": c.agentRun, "agent_finding": c.agentFinding, "agent_notify": c.agentNotify,
-		"agent_new": c.agentNew, "agent_edit": c.agentEdit, "agent_toggle": c.agentToggle, "changes": c.changes, "diff": c.diff, "worker_start": c.workerStart,
+		"agent_new": c.agentNew, "agent_edit": c.agentEdit, "agent_toggle": c.agentToggle, "agent_settings": c.agentSettings, "changes": c.changes, "diff": c.diff, "worker_start": c.workerStart,
 		"open_worktree": c.openWorktree, "graph": c.graph, "editor": c.editor,
 		// processer och Docker
 		"kill_process": c.killProcess, "docker": c.docker, "docker_logs": c.dockerLogs,

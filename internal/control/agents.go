@@ -480,27 +480,104 @@ func (c *Controller) agentToggle(a Args) (any, error) {
 	if err := validAgent(a.S("name")); err != nil {
 		return nil, err
 	}
-	path := config.AgentFile(a.S("name"))
-	b, err := os.ReadFile(path)
-	if err != nil {
+	return nil, setAgentKeys(a.S("name"), [][2]string{{"enabled", fmt.Sprint(a.B("enabled", true))}})
+}
+
+// agentSettings sparar inställningarna från agentkortet. Fält som saknas lämnas orörda.
+func (c *Controller) agentSettings(a Args) (any, error) {
+	name := a.S("name")
+	if err := validAgent(name); err != nil {
 		return nil, err
 	}
-	on := a.B("enabled", true)
-	lines := strings.Split(string(b), "\n")
-	done := false
-	for i, l := range lines {
-		if strings.HasPrefix(strings.TrimSpace(l), "enabled:") && !strings.HasPrefix(l, " ") {
-			rest := ""
-			if j := strings.Index(l, "#"); j > 0 {
-				rest = "        " + l[j:]
+	var kv [][2]string
+	if _, ok := a["every"]; ok {
+		d, err := time.ParseDuration(a.S("every"))
+		if err != nil || d < 10*time.Minute {
+			return nil, errors.New("schemat måste vara minst 10m, t.ex. 30m, 2h eller 24h")
+		}
+		kv = append(kv, [2]string{"every", a.S("every")})
+	}
+	if _, ok := a["notify"]; ok {
+		if _, ok := severityRank[a.S("notify")]; !ok {
+			return nil, errors.New("notify måste vara hög, medel, låg eller aldrig")
+		}
+		kv = append(kv, [2]string{"notify", a.S("notify")})
+	}
+	if _, ok := a["onlyOnChanges"]; ok {
+		kv = append(kv, [2]string{"only_on_changes", fmt.Sprint(a.S("onlyOnChanges") == "true")})
+	}
+	if _, ok := a["repos"]; ok {
+		switch r := a.S("repos"); r {
+		case "", "active":
+			kv = append(kv, [2]string{"repos", "active"})
+		case "all":
+			kv = append(kv, [2]string{"repos", "all"})
+		default:
+			var q []string
+			for _, x := range strings.Split(r, ",") {
+				if x = strings.TrimSpace(x); x != "" {
+					q = append(q, yamlQuote(x))
+				}
 			}
-			lines[i] = fmt.Sprintf("enabled: %v%s", on, rest)
+			kv = append(kv, [2]string{"repos", "[" + strings.Join(q, ", ") + "]"})
+		}
+	}
+	if _, ok := a["model"]; ok {
+		kv = append(kv, [2]string{"model", yamlQuote(a.S("model"))})
+	}
+	if _, ok := a["description"]; ok {
+		kv = append(kv, [2]string{"description", yamlQuote(a.S("description"))})
+	}
+	if err := setAgentKeys(name, kv); err != nil {
+		return nil, err
+	}
+	if _, errs := config.Agents(); errs[name] != nil {
+		return nil, fmt.Errorf("filen blev ogiltig: %v", errs[name])
+	}
+	return map[string]string{"name": name}, nil
+}
+
+func yamlQuote(s string) string {
+	if s == "" {
+		return `""`
+	}
+	b, _ := json.Marshal(s) // JSON-strängar är giltig YAML
+	return string(b)
+}
+
+// setAgentKeys skriver om nycklar på översta nivån i agentfilen rad för rad, så att kommentarer
+// och resten av filen (t.ex. prompten) blir kvar. Nycklar som saknas läggs till efter etiketten.
+func setAgentKeys(name string, kv [][2]string) error {
+	path := config.AgentFile(name)
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(string(b), "\n")
+	for _, p := range kv {
+		key, val := p[0], p[1]
+		done := false
+		for i, l := range lines {
+			if !strings.HasPrefix(l, key+":") {
+				continue
+			}
+			rest := ""
+			if j := strings.Index(l, " #"); j > 0 && !strings.ContainsAny(l[:j], `"'`) {
+				rest = "  " + strings.TrimSpace(l[j:])
+			}
+			lines[i] = key + ": " + val + rest
 			done = true
 			break
 		}
+		if !done {
+			at := 0
+			for i, l := range lines {
+				if strings.HasPrefix(l, "label:") {
+					at = i + 1
+				}
+			}
+			lines = append(lines[:at], append([]string{key + ": " + val}, lines[at:]...)...)
+		}
 	}
-	if !done {
-		lines = append([]string{fmt.Sprintf("enabled: %v", on)}, lines...)
-	}
-	return nil, os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o644)
+	return os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o644)
 }
