@@ -457,7 +457,24 @@ func NotePath(cfg config.Config, repo, branch string) string {
 		return ""
 	}
 	safe := strings.NewReplacer("/", " ∕ ", "\\", "-", ":", "-").Replace(branch)
-	return filepath.Join(cfg.Obsidian.Vault, cfg.Obsidian.BranchDir, repo, safe+".md")
+	return filepath.Join(RepoDir(cfg, repo), "Branches", safe+".md")
+}
+
+// RepoDir är repots mapp i valvet ("" om inget valv är valt).
+func RepoDir(cfg config.Config, repo string) string {
+	if cfg.Obsidian.Vault == "" {
+		return ""
+	}
+	return filepath.Join(cfg.Obsidian.Vault, cfg.Obsidian.ProjectDir, strings.NewReplacer("/", "-", ":", "-").Replace(repo))
+}
+
+// RepoNotePath är repots startsida i valvet: <projectDir>/<repo>/<repo>.md.
+func RepoNotePath(cfg config.Config, repo string) string {
+	d := RepoDir(cfg, repo)
+	if d == "" {
+		return ""
+	}
+	return filepath.Join(d, filepath.Base(d)+".md")
 }
 
 func containsInt(xs []int, x int) bool {

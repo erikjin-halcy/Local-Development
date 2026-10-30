@@ -130,13 +130,23 @@ pre.term { flex: 1; min-height: 160px; margin: 0; background: #07090c; border: 1
 .seg button { border: 0; border-radius: 0; background: transparent; color: var(--muted); }
 .seg button.on { background: var(--panel2); color: var(--text); }
 /* orkestrator */
-.orchgrid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 14px; }
-@media (max-width: 1100px) { .orchgrid { grid-template-columns: 1fr; } }
-.orchgrid .chat { display: flex; flex-direction: column; gap: 8px; height: calc(100vh - 150px); }
-.orchgrid .chat pre.term { font-size: 12.5px; }
-.worker { padding: 8px 12px; border-bottom: 1px solid #202936; cursor: pointer; }
-.worker:hover { background: var(--panel2); }
-.worker:last-child { border-bottom: 0; }
+.ochat { max-width: 980px; margin: 0 auto; display: flex; flex-direction: column; height: calc(100vh - 120px); background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.ohead { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.ostatus { color: var(--muted); font-size: 12px; display: inline-flex; gap: 6px; align-items: center; }
+.oworkers { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 8px 14px; border-bottom: 1px solid var(--line); }
+.omsgs { flex: 1; overflow: auto; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; }
+.ochat pre.term { flex: 1; margin: 10px; }
+.omsg { max-width: 82%; line-height: 1.5; font-size: 14px; }
+.omsg.user { align-self: flex-end; background: #1f3a5c; border: 1px solid #2c5282; padding: 8px 12px; border-radius: 12px 12px 2px 12px; white-space: pre-wrap; }
+.omsg.bot { align-self: flex-start; background: var(--panel2); border: 1px solid var(--line); padding: 10px 14px; border-radius: 12px 12px 12px 2px; }
+.omsg.bot ul { margin: 4px 0; padding-left: 20px; } .omsg.bot code { font: 12px var(--mono); background: #0b0f14; padding: 1px 4px; border-radius: 4px; }
+.otable { border-collapse: collapse; margin: 6px 0; font-size: 13px; }
+.otable th, .otable td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; vertical-align: top; }
+.otable th { color: var(--muted); font-weight: 500; }
+.omsg.tool { align-self: flex-start; color: var(--muted); font: 11.5px var(--mono); padding: 0 4px; max-width: 95%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.oinput { display: flex; gap: 10px; padding: 12px 14px; border-top: 1px solid var(--line); align-items: flex-end; }
+.oinput textarea { flex: 1; resize: none; font-size: 14px; }
+.obtns { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
 dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 12px; padding: 0; width: min(520px, 92vw); }
 dialog::backdrop { background: #0009; }
 dialog form { padding: 18px; display: flex; flex-direction: column; gap: 12px; }
@@ -215,6 +225,7 @@ dialog#help { width: min(860px, 94vw); max-height: 88vh; }
   <dt><span class="badge pr">12 öppna PR</span></dt><dd>Öppna pull requests på GitHub. Klicka för att se dem.</dd>
   <dt class="mono small muted">~/Desktop/…</dt><dd>Var repot ligger.</dd>
   <dt><button class="sm">+ Ny branch</button></dt><dd>Checkar ut en ny eller befintlig branch i en egen katalog bredvid repot (<span class="mono">repo.worktrees/branch</span>), så att du kan jobba på flera branches samtidigt. Välj om Claude ska starta där med en uppgift.</dd>
+  <dt><button class="sm">Obsidian</button></dt><dd>Öppnar repots startsida i Obsidian. Varje repo du jobbar med har en egen mapp i valvet (<span class="mono">Projekt/&lt;repo&gt;/</span>) med startsidan och branch-anteckningarna. Länkar, branches och PR:er på startsidan uppdateras automatiskt; resten skriver du själv.</dd>
   <dt><button class="sm">Graf</button></dt><dd>Commitgrafen över alla branches, i panelen till höger.</dd>
   <dt><button class="sm">Arkivera</button></dt><dd>Gömmer repot från Aktiva/Inaktiva och från <span class="mono">devctl status</span>. Inget i repot ändras. <b>Återställ</b> tar tillbaka det.</dd>
 </dl>
@@ -424,6 +435,7 @@ function repoCard(r) {
       <span class="spacer"></span>
       <span class="hacts">
       <button class="sm" data-act="wtAdd" data-repo="${esc(r.path)}" title="Checka ut en ny eller befintlig branch i en egen katalog, och starta Claude där om du vill">+ Ny branch</button>
+      <button class="sm" data-act="repoNote" data-repo="${esc(r.path)}" ${S.vault ? "" : "disabled"} title="Öppna repots mapp och startsida i Obsidian">Obsidian</button>
       <button class="sm" data-act="graph" data-repo="${esc(r.path)}" title="Visa commitgrafen över alla branches">Graf</button>
       <button class="sm" data-act="archive" data-repo="${esc(r.path)}" data-archived="${r.archived ? "0" : "1"}" title="${r.archived ? "Visa repot i översikten igen" : "Göm repot från översikten. Inget i repot ändras."}">${r.archived ? "Återställ" : "Arkivera"}</button>
       </span>
@@ -619,7 +631,7 @@ function renderTree(sessActs) {
 function renderOrch(v) {
   const o = S.orchestrator;
   if (!o) {
-    v.innerHTML = `<div class="card" style="padding:24px;max-width:720px">
+    v.innerHTML = `<div class="card" style="padding:24px;max-width:720px;margin:0 auto">
       <h2 style="margin-top:0">Global orkestrator</h2>
       <p>En Claude Code-session i tmux (session <code>devctl</code>) som ser hela läget via <code>devctl</code>: repos och worktrees, panes, servrar och containrar.
       Den kan skapa worktrees, starta workers på en branch, läsa av och instruera dem, och skriva branch-anteckningar och den dagliga loggen i Obsidian.</p>
@@ -629,20 +641,25 @@ function renderOrch(v) {
   }
   const workers = panes().filter(x => x.w.kind === "worker" || (x.p.role || "").startsWith("worker"));
   if ($("#orchChat") && $("#orchChat").dataset.pane === o.pane) { renderWorkers(workers); return; }
-  v.innerHTML = `<div class="orchgrid">
-    <div class="card chat" id="orchChat" data-pane="${esc(o.pane)}" style="padding:12px">
-      <div class="row"><b class="mono">Orkestrator</b><span class="muted small mono">${esc(o.session)} · ${esc(o.pane)}</span><span class="spacer"></span>
-        <button class="sm" data-act="brief">Instruktioner</button><button class="sm" data-act="attachOrch">Öppna i Terminal</button></div>
-      <pre class="term" id="orchOut">…</pre>
-      <div class="row">
-        <button class="sm" data-okey="Escape">Esc</button><button class="sm" data-okey="C-c">Ctrl-C</button><button class="sm" data-okey="Enter">Enter</button>
-        <button class="sm" data-okey="Up">↑</button><button class="sm" data-okey="Down">↓</button><button class="sm" data-okey="BTab" title="Shift+Tab: byt läge">⇧Tab</button>
-        <span class="muted small">Enter skickar · Shift+Enter ny rad</span>
-      </div>
-      <div class="row" style="flex-wrap:nowrap"><textarea id="orchIn" rows="3" placeholder="Skriv till orkestratorn, t.ex. ”Starta en worker i Dentio på feat/x som fixar …”"></textarea><button class="orch" id="orchSend">Skicka</button></div>
+  v.innerHTML = `<div class="ochat" id="orchChat" data-pane="${esc(o.pane)}">
+    <div class="ohead">
+      <b>Orkestrator</b><span class="ostatus" id="orchStatus"></span>
+      <span class="spacer"></span>
+      <button class="sm" data-act="workerNew" title="Starta en Claude-worker på en branch">+ Worker</button>
+      <button class="sm" id="orchRaw" title="Visa Claudes terminal som den ser ut">Terminal</button>
+      <button class="sm" data-act="brief" title="Orkestratorns instruktioner">Instruktioner</button>
+      <button class="sm" data-act="attachOrch" title="Öppna sessionen i Terminal.app">↗</button>
     </div>
-    <div><div class="card"><div class="chead"><b>Workers</b><span class="spacer"></span><button class="sm" data-act="workerNew">+ Worker</button></div><div id="workers"></div></div>
-      <div class="muted small" style="padding:0 4px">Workers är Claude-sessioner i egna worktrees. Klicka för att se vad de gör.</div></div>
+    <div class="oworkers" id="workers"></div>
+    <div class="omsgs" id="orchOut"></div>
+    <pre class="term" id="orchTerm" style="display:none"></pre>
+    <div class="oinput">
+      <textarea id="orchIn" rows="2" placeholder="Skriv till orkestratorn … (Enter skickar, Shift+Enter ny rad)"></textarea>
+      <div class="obtns">
+        <button class="orch" id="orchSend">Skicka</button>
+        <span class="row" style="gap:4px"><button class="sm" data-okey="Escape" title="Avbryt det orkestratorn gör">Esc</button><button class="sm" data-okey="Enter" title="Bekräfta ett val i orkestratorn">↵</button><button class="sm" data-okey="Up" title="Upp i en meny">↑</button><button class="sm" data-okey="Down" title="Ned i en meny">↓</button></span>
+      </div>
+    </div>
   </div>`;
   renderWorkers(workers);
   loadOrch(true);
@@ -650,18 +667,96 @@ function renderOrch(v) {
 
 function renderWorkers(workers) {
   const el = $("#workers"); if (!el) return;
-  el.innerHTML = workers.length ? workers.map(({ s, w, p }) => `<div class="worker" data-pane="${esc(p.id)}">
-    <div class="mono small"><b>${esc(w.name)}</b> <span class="muted">${esc(p.id)}</span></div>
-    <div class="small">${esc(paneLabel(p))}</div>
-    ${p.worktree ? `<div class="small" style="color:var(--ok)">⎇ ${esc(p.worktree.repo)}@${esc(p.worktree.branch)}</div>` : ""}
-  </div>`).join("") : `<div class="muted small" style="padding:12px">Inga workers än.</div>`;
+  el.style.display = workers.length ? "" : "none";
+  el.innerHTML = workers.length ? `<span class="muted small">Workers:</span>` + workers.map(({ w, p }) =>
+    `<span class="chip pane" data-pane="${esc(p.id)}" title="${esc(paneLabel(p))}">⚙ ${esc(w.name)}${p.worktree ? ` <span class="muted">⎇ ${esc(p.worktree.branch)}</span>` : ""}</span>`).join("") : "";
 }
 
+// Gör om Claude Codes terminalbild till ett samtal: dina meddelanden, svaren och verktygsanrop.
+// Logotyp, linjer, statusrad, tips och spinnertexter tas bort.
+function parseClaude(text) {
+  const lines = String(text).split("\n").map(l => l.replace(/\s+$/, ""));
+  // Allt från inmatningsrutans övre linje och nedåt är inmatning och statusrad
+  let end = lines.length;
+  for (let i = lines.length - 1; i >= 0; i--) if (/^[─━]{10,}$/.test(lines[i])) { end = i; if (i > 0 && /^[─━]{10,}$/.test(lines[i - 2] || "")) end = i - 2; break; }
+  const tail = lines.slice(end).join("\n");
+  const working = /esc to interrupt/.test(tail);
+  const items = [];
+  let cur = null;
+  const push = (role, t) => { cur = { role, text: t }; items.push(cur); };
+  for (const raw of lines.slice(0, end)) {
+    const l = raw;
+    if (!l.trim()) { if (cur && cur.role === "assistant") cur.text += "\n"; continue; }
+    if (/[▐▛▜▝▘█]{2,}|Claude Code v\d/.test(l) || /^\s*(Opus|Sonnet|Haiku|Fable)\b.*·/.test(l) || /^\s*~\//.test(l) && !cur) continue;
+    if (/^\s*[⎿└]?\s*Tip:/.test(l) || /^[─━]{10,}$/.test(l)) continue;
+    if (/^[✻✶✳✢✽·*] \S.*(…|for \d+s|done \d)/.test(l)) continue;
+    if (/^[❯>] /.test(l)) { push("user", l.replace(/^[❯>] /, "")); continue; }
+    const m = l.match(/^[⏺●] (.*)$/);
+    if (m) {
+      if (/^(Bash|Read|Edit|Write|Update|Grep|Glob|Task|Agent|WebFetch|WebSearch|Search|Fetch|SendMessage|ListAgents|Skill)\b|^Ran \d|^Read \d|^Searched|^Listed/.test(m[1])) push("tool", m[1]);
+      else push("assistant", m[1]);
+      continue;
+    }
+    if (/^\s+(Ran|Read|Searched|Listed|Wrote|Updated) \d/.test(l) && (!cur || cur.role !== "assistant")) { push("tool", l.trim()); continue; }
+    if (/^\s*⎿/.test(l)) { if (cur && cur.role === "tool") cur.detail = (cur.detail || "") + l.replace(/^\s*⎿\s*/, "") + "\n"; continue; }
+    if (cur) cur.text += "\n" + l.replace(/^ {2}/, ""); else push("info", l.trim());
+  }
+  return { items: items.filter(x => x.role !== "info"), working };
+}
+
+// Enkel markdown för svaren: rubriker, fetstil, kod, listor och tabeller. Claude ritar tabeller med
+// ramtecken (│ ├ ┼ ─) och bryter långa celler över flera rader; de blir en riktig tabell.
+function md(t) {
+  const inline = s => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
+  const out = []; let list = false, table = null;
+  const flush = () => {
+    if (!table) return;
+    const [head, ...rows] = table;
+    out.push(`<table class="otable"><tr>${head.map(c => `<th>${inline(c)}</th>`).join("")}</tr>${rows.map(r => `<tr>${r.map(c => `<td>${inline(c)}</td>`).join("")}</tr>`).join("")}</table>`);
+    table = null;
+  };
+  let newRow = true;
+  for (const l of t.replace(/\n{3,}/g, "\n\n").trim().split("\n")) {
+    if (/^\s*[┌├└╞╘╒+|]?[─━═┬┼┴┐┤┘\-:+| ]{3,}$/.test(l) && /[─━═\-]{3}/.test(l)) { newRow = true; continue; }
+    if (/^\s*[│|]/.test(l)) {
+      const cells = l.trim().replace(/^[│|]|[│|]$/g, "").split(/[│|]/).map(c => c.trim());
+      if (!table) { table = [cells]; newRow = true; continue; }
+      // En rad utan ny avgränsare fortsätter föregående rads celler
+      const last = table[table.length - 1];
+      if (!newRow && table.length > 1 && cells.length === last.length) last.forEach((c, i) => { if (cells[i]) last[i] = (c + " " + cells[i]).trim(); });
+      else table.push(cells);
+      newRow = false; continue;
+    }
+    flush();
+    const li = l.match(/^\s*[-*•] (.*)$/) || l.match(/^\s*\d+\. (.*)$/);
+    if (li) { if (!list) { out.push("<ul>"); list = true; } out.push(`<li>${inline(li[1])}</li>`); continue; }
+    if (list) { out.push("</ul>"); list = false; }
+    if (/^#{1,4} /.test(l)) out.push(`<b>${inline(l.replace(/^#+ /, ""))}</b>`);
+    else if (/^\|/.test(l)) out.push(`<span class="mono small">${inline(l)}</span>`);
+    else if (!l.trim()) out.push("<br>");
+    else out.push(`<span>${inline(l)}</span><br>`);
+  }
+  flush();
+  if (list) out.push("</ul>");
+  return out.join("");
+}
+
+let orchRaw = false, orchLast = "";
 async function loadOrch(scroll) {
-  const pre = $("#orchOut"); if (!pre || !S.orchestrator) return;
+  const box = $("#orchOut"); if (!box || !S.orchestrator) return;
   try {
-    const r = await api("capture", { pane: S.orchestrator.pane, lines: 400 }, true);
-    setTerm(pre, r.text, scroll);
+    const r = await api("capture", { pane: S.orchestrator.pane, lines: 1500 }, true);
+    if (orchRaw) { $("#orchTerm").style.display = ""; box.style.display = "none"; return setTerm($("#orchTerm"), r.text, scroll); }
+    $("#orchTerm").style.display = "none"; box.style.display = "";
+    const { items, working } = parseClaude(r.text);
+    $("#orchStatus").innerHTML = working ? `<span class="dot on"></span> arbetar …` : `<span class="dot"></span> väntar på dig`;
+    const html = items.map(x => x.role === "user" ? `<div class="omsg user">${esc(x.text.trim())}</div>`
+      : x.role === "tool" ? `<div class="omsg tool" title="${esc((x.detail || "").trim())}">⚙ ${esc(x.text.trim())}</div>`
+      : `<div class="omsg bot">${md(x.text)}</div>`).join("") || `<div class="empty">Inget samtal än. Skriv nedan, t.ex. ”Vad pågår i Halcy-app?”</div>`;
+    if (html === orchLast && !scroll) return;
+    const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 40;
+    orchLast = html; box.innerHTML = html;
+    if (scroll || atBottom) box.scrollTop = box.scrollHeight;
   } catch {}
 }
 function setTerm(pre, text, scroll) {
@@ -875,6 +970,7 @@ document.addEventListener("click", async e => {
   if (t.id === "iReload") return loadText();
   if (t.id === "iSend") return sendInspect();
   if (t.id === "orchSend") return sendOrch();
+  if (t.id === "orchRaw") { orchRaw = !orchRaw; t.classList.toggle("primary", orchRaw); orchLast = ""; return loadOrch(true); }
   const op = t.closest("[data-open]"); if (op) { e.preventDefault(); return api("open_url", { url: op.dataset.open }); }
   const k = t.closest("[data-key]"); if (k && inspect?.kind === "pane") return api("keys", { pane: inspect.id, keys: k.dataset.key });
   const ok = t.closest("[data-okey]"); if (ok && S.orchestrator) { await api("keys", { pane: S.orchestrator.pane, keys: ok.dataset.okey }); return setTimeout(() => loadOrch(true), 300); }
@@ -935,6 +1031,7 @@ document.addEventListener("click", async e => {
     case "archive": { const r = repoOf(d.repo); await api("archive", { repo: d.repo, archived: d.archived === "1" });
       return toast(d.archived === "1" ? `${r.name} arkiverat` : `${r.name} återställt`, true); }
     case "privacy": return api("open_privacy");
+    case "repoNote": return api("repo_note", { repo: d.repo, open: true });
     case "prune": return api("worktree_prune", { repo: d.repo });
     case "orchStart": { const o = await api("orchestrator_start"); tab = "orchestrator"; store.set("tab", tab); return; }
     case "attachOrch": return api("attach", { session: S.orchestrator.session });

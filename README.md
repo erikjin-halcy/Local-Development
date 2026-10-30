@@ -95,7 +95,7 @@ för agenter. Den globala orkestratorn styr allt genom dem.
   "editor": "code",
   "obsidian": {
     "vault": "~/…/Obsidian/Mitt valv",
-    "branchDir": "Branches",
+    "projectDir": "Projekt",
     "logDir": "Dev-logg",
     "readVaults": ["~/…/Annat valv"]
   },
@@ -110,8 +110,10 @@ för agenter. Den globala orkestratorn styr allt genom dem.
 
 - `roots`: var repos letas upp. Repos där en tmux-pane eller server körs hittas även utanför rötterna.
 - `session`: tmux-sessionen där orkestratorn och workers skapas.
-- `obsidian.vault`: valvet där branch-anteckningar (`Branches/<repo>/<branch>.md`) och dagliga loggar
-  (`Dev-logg/ÅÅÅÅ-MM-DD.md`) skrivs. I loggen skrivs bara delen mellan `devctl`-markeringarna om;
+- `obsidian.vault`: valvet där devctl skriver. Varje repo du jobbar med får en mapp
+  `<projectDir>/<repo>/` med startsidan `<repo>.md` (GitHub, branches och öppna PR:er uppdateras
+  automatiskt; resten skriver du själv) och branch-anteckningar i `Branches/`. Dagliga loggar
+  hamnar i `Dev-logg/ÅÅÅÅ-MM-DD.md`. I loggen skrivs bara delen mellan `devctl`-markeringarna om;
   egna anteckningar i filen bevaras.
 - `automation`: Local-Automations lokala gränssnitt (`url`), som visas i Automation-fliken. `cloudURL`
   ger en genväg till molnappen och `dir` gör att devctl kan starta gränssnittet om det inte körs.

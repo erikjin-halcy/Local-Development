@@ -10,9 +10,10 @@ import (
 
 type Obsidian struct {
 	// Valv där devctl skriver anteckningar per branch och den dagliga loggen
-	Vault     string `json:"vault"`
-	BranchDir string `json:"branchDir"`
-	LogDir    string `json:"logDir"`
+	Vault string `json:"vault"`
+	// Mapp i valvet med en undermapp per repo: <projectDir>/<repo>/<repo>.md och .../Branches/<branch>.md
+	ProjectDir string `json:"projectDir"`
+	LogDir     string `json:"logDir"`
 	// Valv som orkestratorn får läsa som kontext
 	ReadVaults []string `json:"readVaults"`
 }
@@ -67,7 +68,7 @@ func defaults() Config {
 	return Config{
 		Port: 7878, Roots: []string{"~/Desktop"}, ScanDepth: 3, Session: "devctl",
 		OrchestratorCmd: "claude", WorkerCmd: "claude", Editor: "code",
-		Obsidian:        Obsidian{BranchDir: "Branches", LogDir: "Dev-logg", ReadVaults: []string{}},
+		Obsidian:        Obsidian{ProjectDir: "Projekt", LogDir: "Dev-logg", ReadVaults: []string{}},
 		LogEveryMinutes: 30,
 		Automation:      Automation{URL: "http://localhost:4777"},
 	}

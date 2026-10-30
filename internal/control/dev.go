@@ -368,7 +368,7 @@ tags: [branch]
 ---
 # %s
 
-**Repo:** %s%s%s
+**Repo:** [[%s]]%s%s
 
 ## Mål
 
@@ -463,7 +463,7 @@ func logSection(cfg config.Config, snap state.Snapshot, now time.Time) string {
 			continue
 		}
 		any = true
-		fmt.Fprintf(&b, "### %s\n", r.Name)
+		fmt.Fprintf(&b, "### [[%s]]\n", r.Name)
 		names := make([]string, 0, len(byBranch))
 		for k := range byBranch {
 			names = append(names, k)
@@ -586,7 +586,8 @@ starta workers (egna Claude Code-sessioner) i egna worktrees. Webbgränssnittet:
 - `+"`devctl log`"+` – uppdaterar dagens utvecklingslogg i Obsidian.
 
 ## Obsidian
-- Arbetsvalv: %s (branch-anteckningar i %s/<repo>/, dagliga loggar i %s/).
+- Arbetsvalv: %s. Varje repo har en mapp %s/<repo>/ med startsidan <repo>.md och
+  branch-anteckningar i Branches/. Dagliga loggar ligger i %s/.
 - Valv du får läsa som kontext (ändra inte i dem):
 %s
 
@@ -597,7 +598,7 @@ starta workers (egna Claude Code-sessioner) i egna worktrees. Webbgränssnittet:
 - Be workers avsluta med en rad `+"`KLAR: <sammanfattning>`"+` och polla dem med rimliga intervall.
 - Svara kort. Längre planer och beslut skriver du i branchens anteckning.
 - Vänta på användarens uppdrag innan du startar workers.
-`, c.cfg.Port, vault, c.cfg.Obsidian.BranchDir, c.cfg.Obsidian.LogDir, read)
+`, c.cfg.Port, vault, c.cfg.Obsidian.ProjectDir, c.cfg.Obsidian.LogDir, read)
 }
 
 func (c *Controller) briefAction(Args) (any, error) {
@@ -757,4 +758,125 @@ func (c *Controller) editActions(a Args) (any, error) {
 	}
 	c.col.Refresh(true)
 	return map[string]string{"path": path}, err
+}
+
+// ---------- repo-mappar i Obsidian ----------
+
+const repoStart, repoEnd = "<!-- devctl:repo:start -->", "<!-- devctl:repo:end -->"
+
+// SyncRepoNotes ser till att varje aktivt, icke arkiverat repo har en mapp i valvet med en startsida.
+// Bara delen mellan devctl-markeringarna skrivs om; egna anteckningar i filen bevaras.
+func (c *Controller) SyncRepoNotes() (int, error) {
+	if c.cfg.Obsidian.Vault == "" {
+		return 0, nil
+	}
+	n := 0
+	for _, r := range c.col.Snapshot().Repos {
+		if !r.Active || (r.Archived && !r.Busy) {
+			continue
+		}
+		changed, err := c.writeRepoNote(r)
+		if err != nil {
+			return n, err
+		}
+		if changed {
+			n++
+		}
+	}
+	return n, nil
+}
+
+func repoSection(cfg config.Config, r state.Repo) string {
+	var b strings.Builder
+	b.WriteString(repoStart + "\n")
+	if r.GitHub != "" {
+		fmt.Fprintf(&b, "**GitHub:** [%s](https://github.com/%s)", r.GitHub, r.GitHub)
+		if len(r.PRs) > 0 {
+			fmt.Fprintf(&b, " · [%d öppna PR](https://github.com/%s/pulls)", len(r.PRs), r.GitHub)
+		}
+		b.WriteString("  \n")
+	}
+	fmt.Fprintf(&b, "**Lokalt:** `%s`\n\n## Branches\n", r.Path)
+	for _, wt := range r.Worktrees {
+		if wt.Missing || wt.Branch == "" {
+			continue
+		}
+		line := "- **" + wt.Branch + "**"
+		if p := state.NotePath(cfg, r.Name, wt.Branch); p != "" {
+			if _, err := os.Stat(p); err == nil {
+				line = "- [[" + strings.TrimSuffix(filepath.Base(p), ".md") + "|" + wt.Branch + "]]"
+			}
+		}
+		if wt.Main {
+			line += " (huvud)"
+		}
+		if wt.PR != nil {
+			line += fmt.Sprintf(" · [PR #%d](%s)", wt.PR.Number, wt.PR.URL)
+		}
+		if wt.Last.Unix > 0 {
+			line += " · senaste commit " + time.Unix(wt.Last.Unix, 0).Format("2006-01-02")
+		}
+		b.WriteString(line + "\n")
+	}
+	if len(r.PRs) > 0 {
+		b.WriteString("\n## Öppna PR:er\n")
+		for i, p := range r.PRs {
+			if i == 10 {
+				fmt.Fprintf(&b, "- … och %d till\n", len(r.PRs)-10)
+				break
+			}
+			fmt.Fprintf(&b, "- [#%d %s](%s) (%s)\n", p.Number, p.Title, p.URL, p.Head)
+		}
+	}
+	b.WriteString(repoEnd)
+	return b.String()
+}
+
+// writeRepoNote skapar eller uppdaterar repots startsida. Returnerar om filen ändrades.
+func (c *Controller) writeRepoNote(r state.Repo) (bool, error) {
+	path := state.RepoNotePath(c.cfg, r.Name)
+	if path == "" {
+		return false, nil
+	}
+	section := repoSection(c.cfg, r)
+	old, err := os.ReadFile(path)
+	var out string
+	switch {
+	case err == nil && strings.Contains(string(old), repoStart) && strings.Contains(string(old), repoEnd):
+		s := string(old)
+		i, j := strings.Index(s, repoStart), strings.Index(s, repoEnd)+len(repoEnd)
+		out = s[:i] + section + s[j:]
+	case err == nil:
+		// En befintlig anteckning (t.ex. flyttad hit): lägg devctl-delen sist
+		out = strings.TrimRight(string(old), "\n") + "\n\n## Från devctl\n" + section + "\n"
+	default:
+		out = fmt.Sprintf("---\nrepo: %s\ntags: [repo]\ncreated: %s\n---\n# %s\n\n%s\n\n## Om projektet\n\n\n## Anteckningar\n\n\n## Beslut\n\n",
+			r.Name, time.Now().Format("2006-01-02"), r.Name, section)
+	}
+	if out == string(old) {
+		return false, nil
+	}
+	if err := os.MkdirAll(filepath.Join(filepath.Dir(path), "Branches"), 0o755); err != nil {
+		return false, err
+	}
+	return true, os.WriteFile(path, []byte(out), 0o644)
+}
+
+func (c *Controller) repoNote(a Args) (any, error) {
+	r, err := FindRepo(c.col.Snapshot(), a.S("repo"))
+	if err != nil {
+		return nil, err
+	}
+	if c.cfg.Obsidian.Vault == "" {
+		return nil, fmt.Errorf("inget Obsidian-valv valt; sätt obsidian.vault i %s", config.Path())
+	}
+	if _, err := c.writeRepoNote(*r); err != nil {
+		return nil, err
+	}
+	path := state.RepoNotePath(c.cfg, r.Name)
+	res := map[string]any{"path": path, "uri": obsidianURI(path)}
+	if a.B("open", false) {
+		return res, openInObsidian(path)
+	}
+	return res, nil
 }

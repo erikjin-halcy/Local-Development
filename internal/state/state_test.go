@@ -42,9 +42,12 @@ func TestClassify(t *testing.T) {
 }
 
 func TestNotePath(t *testing.T) {
-	cfg := config.Config{Obsidian: config.Obsidian{Vault: "/v", BranchDir: "Branches"}}
-	if got := NotePath(cfg, "repo", "feat/x"); got != "/v/Branches/repo/feat ∕ x.md" {
+	cfg := config.Config{Obsidian: config.Obsidian{Vault: "/v", ProjectDir: "Projekt"}}
+	if got := NotePath(cfg, "repo", "feat/x"); got != "/v/Projekt/repo/Branches/feat ∕ x.md" {
 		t.Errorf("NotePath = %q", got)
+	}
+	if got := RepoNotePath(cfg, "Halcy-app"); got != "/v/Projekt/Halcy-app/Halcy-app.md" {
+		t.Errorf("RepoNotePath = %q", got)
 	}
 	if NotePath(cfg, "repo", "(abc123)") != "" {
 		t.Error("detached HEAD ska inte få någon anteckning")

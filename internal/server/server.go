@@ -44,6 +44,18 @@ func Run(cfg config.Config) error {
 	col.Start()
 	ctl := control.New(cfg, col)
 
+	// Repo-mapparna i Obsidian hålls aktuella: kort efter start och sedan var 10:e minut
+	if cfg.Obsidian.Vault != "" {
+		go func() {
+			time.Sleep(30 * time.Second)
+			for {
+				if _, err := ctl.SyncRepoNotes(); err != nil {
+					log.Println("repo-anteckningar:", err)
+				}
+				time.Sleep(10 * time.Minute)
+			}
+		}()
+	}
 	if cfg.LogEveryMinutes > 0 && cfg.Obsidian.Vault != "" {
 		go func() {
 			for range time.Tick(time.Duration(cfg.LogEveryMinutes) * time.Minute) {
