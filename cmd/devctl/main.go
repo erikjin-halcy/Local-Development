@@ -362,7 +362,18 @@ func paneCmd(c client, pos []string, flags map[string]string) {
 		if len(pos) < 3 {
 			fail(errors.New("användning: devctl pane send <%id> <text>"))
 		}
-		printResult(c.do("send", map[string]any{"pane": pos[1], "text": strings.Join(pos[2:], " "), "enter": true}))
+		a := map[string]any{"pane": pos[1], "text": strings.Join(pos[2:], " "), "enter": true, "via": "cli"}
+		// Körs devctl av en Claude-session? Då står dess process-id i miljön
+		var cpid int
+		if _, err := fmt.Sscan(os.Getenv("CLAUDE_PID"), &cpid); err == nil {
+			if s := state.SessionByPID(cpid); s != nil {
+				a["by"] = s.Name
+				if s.Tmux != "" {
+					a["where"] = "tmux " + strings.SplitN(s.Tmux, ":@", 2)[0]
+				}
+			}
+		}
+		printResult(c.do("send", a))
 	case "keys":
 		if len(pos) < 3 {
 			fail(errors.New("användning: devctl pane keys <%id> <tangenter…>"))

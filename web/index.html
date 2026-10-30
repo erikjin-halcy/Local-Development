@@ -143,6 +143,10 @@ pre.term { flex: 1; min-height: 160px; margin: 0; background: #07090c; border: 1
 .otable { border-collapse: collapse; margin: 6px 0; font-size: 13px; }
 .otable th, .otable td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; vertical-align: top; }
 .otable th { color: var(--muted); font-weight: 500; }
+.owho { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+.omsg.user .owho { color: #9fc3ea; }
+.omsg.user.peer { align-self: flex-start; background: #2a1f38; border-color: #5b3f70; border-radius: 12px 12px 12px 2px; }
+.omsg.user.peer .owho { color: var(--orch); }
 .omsg.tool { align-self: flex-start; color: var(--muted); font: 11.5px var(--mono); padding: 0 4px; max-width: 95%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .oinput { display: flex; gap: 10px; padding: 12px 14px; border-top: 1px solid var(--line); align-items: flex-end; }
 .oinput textarea { flex: 1; resize: none; font-size: 14px; }
@@ -801,11 +805,17 @@ async function loadOrch(scroll) {
     const r = await api("capture", { pane: S.orchestrator.pane, lines: 1500 }, true);
     if (orchRaw) { $("#orchTerm").style.display = ""; box.style.display = "none"; return setTerm($("#orchTerm"), r.text, scroll); }
     $("#orchTerm").style.display = "none"; box.style.display = "";
-    const { items, working } = parseClaude(r.text);
+    const { working } = parseClaude(r.text);
     $("#orchStatus").innerHTML = working ? `<span class="dot on"></span> arbetar …` : `<span class="dot"></span> väntar på dig`;
-    const html = items.map(x => x.role === "user" ? `<div class="omsg user">${esc(x.text.trim())}</div>`
-      : x.role === "tool" ? `<div class="omsg tool" title="${esc((x.detail || "").trim())}">⚙ ${esc(x.text.trim())}</div>`
-      : `<div class="omsg bot">${md(x.text)}</div>`).join("") || `<div class="empty">Inget samtal än. Skriv nedan, t.ex. ”Vad pågår i Halcy-app?”</div>`;
+    // Samtalet läses ur orkestratorns logg, med vem som skrev varje meddelande
+    const h = await api("orch_history", {}, true);
+    const who = x => `<div class="owho">${x.from === "session" ? "🤖 " : ""}<b>${esc(x.who)}</b>${x.where ? ` · ${esc(x.where)}` : ""} · ${esc(x.time)}</div>`;
+    const html = h.items.map(x =>
+        x.role === "user" ? `<div class="omsg user ${x.from === "session" ? "peer" : ""}">${who(x)}${esc(x.text.trim())}</div>`
+      : x.role === "tool" ? `<div class="omsg tool">⚙ ${esc(x.who)} ${esc(x.text)}</div>`
+      : x.role === "system" ? `<div class="omsg tool" title="${esc(x.text)}">ⓘ ${esc(x.who)}: ${esc(x.text)}</div>`
+      : `<div class="omsg bot"><div class="owho"><b>Orkestratorn</b> · ${esc(x.time)}</div>${md(x.text)}</div>`).join("")
+      || `<div class="empty">Inget samtal än. Skriv nedan, t.ex. ”Vad pågår i Halcy-app?”</div>`;
     if (html === orchLast && !scroll) return;
     const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 40;
     orchLast = html; box.innerHTML = html;
@@ -1249,13 +1259,13 @@ document.addEventListener("keydown", e => {
 
 async function sendInspect() {
   const i = $("#iIn"); if (!i || inspect?.kind !== "pane") return;
-  await api("send", { pane: inspect.id, text: i.value, enter: $("#iEnter").checked });
+  await api("send", { pane: inspect.id, text: i.value, enter: $("#iEnter").checked, via: "app" });
   i.value = ""; setTimeout(() => loadPane(true), 300);
 }
 async function sendOrch() {
   const i = $("#orchIn"); if (!i || !S.orchestrator || !i.value.trim()) return;
   const text = i.value; i.value = "";
-  await api("send", { pane: S.orchestrator.pane, text, enter: true });
+  await api("send", { pane: S.orchestrator.pane, text, enter: true, via: "app" });
   setTimeout(() => loadOrch(true), 400);
 }
 

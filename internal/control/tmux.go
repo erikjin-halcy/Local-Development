@@ -77,7 +77,7 @@ func (c *Controller) actions() map[string]action {
 		"worktree_add": c.worktreeAdd, "worktree_remove": c.worktreeRemove, "worktree_prune": c.worktreePrune,
 		"archive": c.archive, "open_privacy": c.openPrivacy, "run_action": c.runAction, "edit_actions": c.editActions, "repo_note": c.repoNote, "sync_sessions": c.syncSessionsAction,
 		"workflow_status": c.workflowStatus, "workflow_cancel": c.workflowCancel, "ci_rerun": c.ciRerun, "ci_dispatch": c.ciDispatch,
-		"kill_processes": c.killProcesses, "open_parked": c.openParked, "changes": c.changes, "diff": c.diff, "worker_start": c.workerStart,
+		"kill_processes": c.killProcesses, "open_parked": c.openParked, "orch_history": c.orchHistory, "changes": c.changes, "diff": c.diff, "worker_start": c.workerStart,
 		"open_worktree": c.openWorktree, "graph": c.graph, "editor": c.editor,
 		// processer och Docker
 		"kill_process": c.killProcess, "docker": c.docker, "docker_logs": c.dockerLogs,
@@ -299,6 +299,9 @@ func SendText(pane, text string, enter bool) error {
 func (c *Controller) send(a Args) (any, error) {
 	if err := a.need("pane"); err != nil {
 		return nil, err
+	}
+	if a.Raw("text") != "" {
+		logSent(sentEntry{Pane: a.S("pane"), Text: a.Raw("text"), Via: a.S("via"), By: a.S("by"), Where: a.S("where")})
 	}
 	return nil, SendText(a.S("pane"), a.Raw("text"), a.B("enter", true))
 }
