@@ -975,6 +975,7 @@ function renderAgents(v) {
         ${row("Orkestratorn", a.notify === "aldrig" ? "får inga fynd" : `får fynd med allvarlighet <b>${esc(a.notify)}</b> och uppåt`)}
         ${row("Verktyg", `<span class="mono">${esc((a.tools || []).join(", ") || "–")}</span>`)}
         ${a.model ? row("Modell", `<span class="mono">${esc(a.model)}</span>`) : ""}
+        ${(a.skipped || []).length ? row("Hoppar över", `${a.skipped.map(esc).join(", ")} <span class="muted small" title="Repon med taggen local-only granskas aldrig av agenterna, eftersom koden då skulle skickas till Claude.">🔒 local-only</span>`) : ""}
         ${row("Senast", `${esc(st.lastRun || "aldrig")}${st.error ? ` · <span style="color:var(--bad)">${esc(st.error)}</span>` : ""}${scans.length ? ` · granskat: ${scans.map(([p, sc]) => `<span title="${esc(sc.summary || sc.error || "")}">${esc(p.split("/").pop())} ${esc(sc.time)}${sc.error ? " ✗" : ""}</span>`).join(", ")}` : ""}`)}
       </dl>
       ${agentFindings(a)}`}

@@ -214,13 +214,8 @@ func (c *Controller) RunAgent(name, onlyRepo string, force bool) error {
 	defer updateAgentState(name, func(s *agentState) { s.Running = false; s.Current = "" })
 
 	scanned := 0
-	for _, r := range c.col.Snapshot().Repos {
-		if onlyRepo != "" && !strings.EqualFold(onlyRepo, r.Name) {
-			continue
-		}
-		if onlyRepo == "" && !a.RepoScope(r.Name, r.Active, r.Archived) {
-			continue
-		}
+	repos, _ := agentRepos(c.cfg, *a, c.col.Snapshot().Repos, onlyRepo)
+	for _, r := range repos {
 		for _, wt := range r.Worktrees {
 			if wt.Missing || wt.Branch == "" {
 				continue
@@ -351,13 +346,37 @@ type agentView struct {
 	State agentState `json:"state"`
 	Error string     `json:"error,omitempty"`
 	File  string     `json:"file"`
+	// Repon som agenten annars skulle granska men hoppar över (taggen local-only)
+	Skipped []string `json:"skipped"`
+}
+
+// agentRepos är repona en agent granskar (alla i dess omfång, eller bara onlyRepo), och de som hoppas
+// över för att de är privata (local-only): deras kod skickas aldrig till Claude i bakgrunden.
+func agentRepos(cfg config.Config, a config.Agent, repos []state.Repo, onlyRepo string) (scan []state.Repo, skipped []string) {
+	skipped = []string{}
+	for _, r := range repos {
+		if onlyRepo != "" && !strings.EqualFold(onlyRepo, r.Name) {
+			continue
+		}
+		if onlyRepo == "" && !a.RepoScope(r.Name, r.Active, r.Archived) {
+			continue
+		}
+		if config.Private(cfg, r.Name) {
+			skipped = append(skipped, r.Name)
+			continue
+		}
+		scan = append(scan, r)
+	}
+	return scan, skipped
 }
 
 func (c *Controller) agentsList(Args) (any, error) {
 	agents, errs := config.Agents()
 	out := []agentView{}
+	repos := c.col.Snapshot().Repos
 	for _, a := range agents {
-		out = append(out, agentView{Agent: a, State: loadAgentState(a.Name), File: config.AgentFile(a.Name)})
+		_, skipped := agentRepos(c.cfg, a, repos, "")
+		out = append(out, agentView{Agent: a, State: loadAgentState(a.Name), File: config.AgentFile(a.Name), Skipped: skipped})
 	}
 	for name, err := range errs {
 		out = append(out, agentView{Agent: config.Agent{Name: name, Label: name}, Error: err.Error(), File: config.AgentFile(name)})
@@ -369,6 +388,10 @@ func (c *Controller) agentRun(a Args) (any, error) {
 	name := a.S("name")
 	if err := validAgent(name); err != nil {
 		return nil, err
+	}
+	// Uttryckligen ett privat repo: nekas, eftersom koden då skulle skickas till Claude
+	if repo := a.S("repo"); repo != "" && config.Private(c.cfg, repo) {
+		return nil, fmt.Errorf("%s har taggen local-only; agenterna granskar inte repot (ta bort taggen med devctl repo tag %s local-only --remove om det ska granskas)", repo, repo)
 	}
 	if !agentRunMu.TryLock() {
 		return nil, errors.New("en agent körs redan")
