@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -118,21 +119,7 @@ func (c *Controller) report(a Args) (any, error) {
 		unpushed = gitOut("log", "--oneline", "main..")
 	}
 	recent := gitOut("log", "--oneline", "-10")
-	summary := ""
-	if res, err := c.summarize(Args{"target": pane}); err == nil {
-		summary = res.(map[string]string)["text"]
-	}
-
 	now := time.Now()
-	dir := ReportDir(c.cfg, repo)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return nil, err
-	}
-	name := strings.Join(strings.Fields(regexp.MustCompile(`[/\\:*?"<>|#^\[\]]+`).ReplaceAllString(feature, " ")), " ")
-	file := filepath.Join(dir, now.Format("2006-01-02 1504")+" "+name+".md")
-	if _, err := os.Stat(file); err == nil {
-		return nil, fmt.Errorf("rapporten finns redan: %s", file)
-	}
 	or := func(s, empty string) string {
 		if s == "" {
 			return empty
@@ -140,18 +127,7 @@ func (c *Controller) report(a Args) (any, error) {
 		return s
 	}
 	block := func(s string) string { return "```\n" + s + "\n```" }
-	upLine := "Upstream: " + or(upstream, "ingen (jämfört med main)")
-	md := fmt.Sprintf(`---
-repo: %s
-branch: %s
-worktree: %q
-feature: %q
-pane: %q
-datum: %s
-status: klar
----
-# %s · %s
-
+	report := fmt.Sprintf(`%s
 ## Uppdrag
 _Fyll i: vad sessionen skulle göra och vem som bad om det._
 
@@ -161,9 +137,9 @@ _Fyll i: ändringar med filer och commits, och beslut som togs och varför._
 Senaste commits:
 %s
 
-## Läge
+## Läge (%s)
 - Ocommittat: %s
-- Ej pushat (%s): %s
+- Ej pushat (upstream: %s): %s
 - PR, deploy, tester: _fyll i_
 
 ## Kvar och nästa steg
@@ -171,15 +147,42 @@ _Fyll i._
 
 ## Bra att veta
 _Fyll i._
-
-## Underlag (automatiskt, %s)
-%s
-`, repo, branch, wtPath, feature, pane+" "+title, now.Format("2006-01-02"), repo, feature,
-		block(or(recent, "inga commits")),
+%s`, reportStart, block(or(recent, "inga commits")), now.Format("2006-01-02 15:04"),
 		or(map[bool]string{true: "\n" + block(status)}[status != ""], "inget"),
-		upLine, or(map[bool]string{true: "\n" + block(unpushed)}[unpushed != ""], "inget"),
-		now.Format("15:04"), or(summary, "_Ingen Claude-session hittades i panen._"))
-	if err := os.WriteFile(file, []byte(md), 0o644); err != nil {
+		or(upstream, "ingen, jämfört med main"), or(map[bool]string{true: "\n" + block(unpushed)}[unpushed != ""], "inget"), reportEnd)
+	extra := []string{"feature: " + strconv.Quote(feature), "pane: " + strconv.Quote(pane+" "+title), "worktree: " + strconv.Quote(wtPath), "status: klar"}
+
+	// En fil per session: rapporten läggs i sessionens fil (samma som sammanfattningen)
+	file := ""
+	for _, s := range c.sessionInfos() {
+		if s.Pane == pane && s.Transcr != "" {
+			if f, err := c.sessionFileFor(s.Transcr); err == nil {
+				file = f
+			}
+		}
+	}
+	var doc string
+	if file != "" {
+		b, _ := os.ReadFile(file)
+		doc = string(b)
+	} else {
+		file = sessionFileName(ReportDir(c.cfg, repo), feature, "")
+		doc = fmt.Sprintf("---\nrepo: %s\nbranch: %s\ndatum: %s\ntags: [claude-session]\n---\n# %s\n\n[[%s]] · branch `%s`\n\n", repo, branch, now.Format("2006-01-02"), feature, repo, branch)
+	}
+	if strings.Contains(doc, reportStart) {
+		return map[string]string{"path": file, "note": "rapporten finns redan; fyll i den i filen"}, nil
+	}
+	fm, body := splitDoc(doc)
+	fm = append(fm, extra...)
+	if k := strings.Index(body, autoStart); k >= 0 {
+		body = body[:k] + report + "\n\n" + body[k:]
+	} else {
+		body += report + "\n"
+	}
+	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(file, []byte("---\n"+strings.Join(fm, "\n")+"\n---\n"+body), 0o644); err != nil {
 		return nil, err
 	}
 	return map[string]string{"path": file}, nil

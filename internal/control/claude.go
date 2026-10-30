@@ -321,6 +321,7 @@ func sessionMarkdown(s *session, repo, wtPath string, now time.Time) string {
 	fmt.Fprintf(&b, "---\nsession: %s\nrepo: %s\nbranch: %s\ncwd: %q\nmodell: %s\nstartad: %s\nsenast aktiv: %s\nuppdaterad: %s\ntags: [claude-session]\n---\n",
 		s.ID, repo, s.Branch, s.Cwd, s.Model, s.Start.Local().Format("2006-01-02 15:04"), s.Last.Local().Format("2006-01-02 15:04"), now.Format("2006-01-02 15:04"))
 	fmt.Fprintf(&b, "# %s\n\n[[%s]] · branch `%s` · %d meddelanden · %d kommandon\n\n", title, repo, s.Branch, len(s.Prompts), s.Commands)
+	b.WriteString(autoStart + "\n## Sammanfattning (devctl uppdaterar den här delen)\n\n")
 	if len(s.Prompts) > 0 {
 		b.WriteString("## Uppdraget\n" + clip(s.Prompts[0], 1200) + "\n\n")
 	}
@@ -356,7 +357,108 @@ func sessionMarkdown(s *session, repo, wtPath string, now time.Time) string {
 		b.WriteString("## Senaste svaret\n" + clip(s.Reply, 2000) + "\n\n")
 	}
 	fmt.Fprintf(&b, "## Fortsätt sessionen\n```bash\ncd %q && claude --resume %s\n```\n", s.Cwd, s.ID)
+	b.WriteString(autoEnd + "\n")
 	return b.String()
+}
+
+// En session har en fil i Sessioner/, som heter som sessionen (som en PR-titel). devctl skriver
+// sammanfattningen mellan markörer; rapporten (devctl report) och egna frontmatter-fält bevaras.
+const (
+	autoStart   = "<!-- devctl:auto:start -->"
+	autoEnd     = "<!-- devctl:auto:end -->"
+	reportStart = "<!-- devctl:rapport:start -->"
+	reportEnd   = "<!-- devctl:rapport:end -->"
+)
+
+func sessionTitle(s *session) string {
+	if s.Title != "" {
+		return s.Title
+	}
+	if len(s.Prompts) > 0 {
+		return clip(strings.SplitN(s.Prompts[0], "\n", 2)[0], 60)
+	}
+	return "session"
+}
+
+// sessionFileName: <dir>/<titel>.md; finns namnet redan för en annan session blir det "<titel> (2).md" osv.
+func sessionFileName(dir, title, id string) string {
+	base := strings.Join(strings.Fields(unsafeName.ReplaceAllString(clip(title, 70), " ")), " ")
+	base = strings.TrimRight(base, ".… ")
+	if base == "" {
+		base = "session"
+	}
+	for i := 1; ; i++ {
+		name := base
+		if i > 1 {
+			name = fmt.Sprintf("%s (%d)", base, i)
+		}
+		path := filepath.Join(dir, name+".md")
+		b, err := os.ReadFile(path)
+		if err != nil || (id != "" && frontmatterValue(string(b), "session") == id) {
+			return path
+		}
+	}
+}
+
+func frontmatterValue(doc, key string) string {
+	if !strings.HasPrefix(doc, "---\n") {
+		return ""
+	}
+	end := strings.Index(doc[4:], "\n---")
+	if end < 0 {
+		return ""
+	}
+	for _, l := range strings.Split(doc[4:4+end], "\n") {
+		if strings.HasPrefix(l, key+":") {
+			return strings.Trim(strings.TrimSpace(strings.TrimPrefix(l, key+":")), `"`)
+		}
+	}
+	return ""
+}
+
+// writeSessionFile skriver en ny sammanfattning (från sessionMarkdown) men behåller rapporten och
+// frontmatter-fält som någon annan lagt till.
+func writeSessionFile(path, fresh string) error {
+	old, err := os.ReadFile(path)
+	if err != nil {
+		_ = os.MkdirAll(filepath.Dir(path), 0o755)
+		return os.WriteFile(path, []byte(fresh), 0o644)
+	}
+	return os.WriteFile(path, []byte(mergeSessionDoc(string(old), fresh)), 0o644)
+}
+
+func splitDoc(doc string) (fm []string, body string) {
+	if !strings.HasPrefix(doc, "---\n") {
+		return nil, doc
+	}
+	end := strings.Index(doc[4:], "\n---\n")
+	if end < 0 {
+		return nil, doc
+	}
+	return strings.Split(doc[4:4+end], "\n"), doc[4+end+5:]
+}
+
+func mergeSessionDoc(old, fresh string) string {
+	ofm, obody := splitDoc(old)
+	nfm, nbody := splitDoc(fresh)
+	keys := map[string]bool{}
+	for _, l := range nfm {
+		if k, _, ok := strings.Cut(l, ":"); ok {
+			keys[k] = true
+		}
+	}
+	for _, l := range ofm {
+		if k, _, ok := strings.Cut(l, ":"); ok && !keys[k] {
+			nfm = append(nfm, l)
+		}
+	}
+	if i, j := strings.Index(obody, reportStart), strings.Index(obody, reportEnd); i >= 0 && j > i {
+		report := obody[i : j+len(reportEnd)]
+		if k := strings.Index(nbody, autoStart); k >= 0 {
+			nbody = nbody[:k] + report + "\n\n" + nbody[k:]
+		}
+	}
+	return "---\n" + strings.Join(nfm, "\n") + "\n---\n" + nbody
 }
 
 type sessionState struct {
@@ -409,15 +511,10 @@ func (c *Controller) SyncSessions() (int, error) {
 			}
 		}
 		name := prev.File
-		if name == "" || filepath.Dir(name) != filepath.Join(claudeDir(c.cfg, r.Name), "Sessioner") {
-			label := unsafeName.ReplaceAllString(clip(s.Title, 50), " ")
-			if label == "" {
-				label = "session"
-			}
-			name = filepath.Join(claudeDir(c.cfg, r.Name), "Sessioner",
-				fmt.Sprintf("%s %s (%s).md", s.Start.Local().Format("2006-01-02"), strings.TrimSpace(label), id[:8]))
+		if _, err := os.Stat(name); name == "" || err != nil {
+			name = sessionFileName(ReportDir(c.cfg, r.Name), sessionTitle(s), id)
 		}
-		if err := os.WriteFile(name, []byte(sessionMarkdown(s, r.Name, wt, now)), 0o644); err != nil {
+		if err := writeSessionFile(name, sessionMarkdown(s, r.Name, wt, now)); err != nil {
 			return written, err
 		}
 		known[id] = sessionState{File: name, Written: now.Unix()}
@@ -425,6 +522,33 @@ func (c *Controller) SyncSessions() (int, error) {
 	}
 	b, _ := json.MarshalIndent(known, "", "  ")
 	return written, os.WriteFile(sessionStatePath(), b, 0o644)
+}
+
+// sessionFileFor skriver (eller uppdaterar) sessionens fil nu och returnerar sökvägen.
+func (c *Controller) sessionFileFor(transcr string) (string, error) {
+	known := map[string]sessionState{}
+	if b, err := os.ReadFile(sessionStatePath()); err == nil {
+		_ = json.Unmarshal(b, &known)
+	}
+	s, err := parseSession(transcr)
+	if err != nil {
+		return "", err
+	}
+	r, wt := repoForSession(c.col.Snapshot(), s)
+	if r == nil {
+		return "", fmt.Errorf("sessionen hör inte till något känt repo")
+	}
+	id := strings.TrimSuffix(filepath.Base(transcr), ".jsonl")
+	name := known[id].File
+	if _, err := os.Stat(name); name == "" || err != nil {
+		name = sessionFileName(ReportDir(c.cfg, r.Name), sessionTitle(s), id)
+	}
+	if err := writeSessionFile(name, sessionMarkdown(s, r.Name, wt, time.Now())); err != nil {
+		return "", err
+	}
+	known[id] = sessionState{File: name, Written: time.Now().Unix()}
+	b, _ := json.MarshalIndent(known, "", "  ")
+	return name, os.WriteFile(sessionStatePath(), b, 0o644)
 }
 
 // recentSessions är repots senaste sessionsfiler, nyast först.
