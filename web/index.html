@@ -539,7 +539,7 @@ function renderServers(v) {
         <td>${s.pane ? paneChip(s.pane) : s.container ? ctChip(s.container) : `<span class="muted small">—</span>`}</td>
         <td class="cmd" title="${esc(s.command)}">${esc(s.command)}</td>
         <td class="acts">${s.ports.length === 1 ? `<button class="sm" data-open="http://localhost:${s.port}">Öppna</button>` : ""}
-          ${s.pids > 1 && !s.app && s.kind !== "docker" ? `<button class="sm danger" data-act="killGroup" data-pids="${esc([...new Set(by[key(s)].map(x => x.pid))].join(","))}" title="Stoppa alla ${s.pids} processerna (SIGTERM)">Stoppa alla (${s.pids})</button>` : ""}
+          ${s.pids > 1 && !s.app && s.kind !== "docker" ? `<button class="sm danger" data-act="killGroup" data-pids="${esc([...new Set(by[key(s)].map(x => x.pid))].join(","))}" title="Portarna ägs av ${s.pids} processer. Att stoppa processerna (SIGTERM) stänger alla ${s.ports.length} portar.">Stoppa ${s.pids} processer (${s.ports.length} portar)</button>` : ""}
           ${s.kind === "docker" && s.container ? `<button class="sm danger" data-act="stopContainer" data-id="${esc(S.docker.containers.find(c => c.name === s.container)?.id || s.container)}" title="Stoppa containern ${esc(s.container)} (OrbStack/Docker fortsätter köra)">Stoppa container</button>` : ""}
           ${s.app || s.kind === "docker" || s.pids > 1 ? "" : `<button class="sm danger" data-act="killProc" data-pid="${s.pid}" title="Skicka SIGTERM">Stoppa</button>`}</td>
       </tr>`).join("")}
