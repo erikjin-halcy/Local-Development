@@ -100,6 +100,7 @@ för agenter. Den globala orkestratorn styr allt genom dem.
     "readVaults": ["~/…/Annat valv"]
   },
   "logEveryMinutes": 30,
+  "cloud": { "project": "mitt-gcp-projekt", "doc": "agent/devctl", "everyMinutes": 15 },
   "automation": {
     "url": "http://localhost:4777",
     "cloudURL": "https://…web.app",
@@ -213,6 +214,14 @@ devctl agents run sakerhet [--repo r]
 devctl agents findings sakerhet
 devctl agents resolve|ignore <id>
 ```
+
+## På mobilen
+
+Med `cloud.project` satt i konfigurationen skickar devctl en sammanfattning till Firestore
+(`cloud.doc`, standard `agent/devctl`) var 15:e minut när något ändrats, och minst en gång i timmen:
+Claude-sessioner det senaste dygnet, ändringar, PR och CI per branch, öppna fynd, parkerat och vad som körs.
+Local-Automations webbapp visar den på sidan **Datorn**, så läget syns även när Macen är av.
+Skrivningen görs med ditt `gcloud`-konto.
 
 ## Parkerat: frågor som kommer upp mitt i en uppgift
 

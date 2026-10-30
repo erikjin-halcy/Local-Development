@@ -45,6 +45,7 @@ func Run(cfg config.Config) error {
 	ctl := control.New(cfg, col)
 	ctl.StartAgentScheduler()
 	ctl.AutoReloadOrchestrator()
+	ctl.StartCloudSync()
 
 	// Repo-mapparna i Obsidian hålls aktuella: kort efter start och sedan var 10:e minut
 	if cfg.Obsidian.Vault != "" {

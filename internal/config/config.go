@@ -28,6 +28,13 @@ type Automation struct {
 	Dir string `json:"dir"`
 }
 
+// Cloud: devctl skickar en sammanfattning till ett Firestore-dokument så att läget syns på mobilen.
+type Cloud struct {
+	Project      string `json:"project"`      // GCP-projekt ("" = av)
+	Doc          string `json:"doc"`          // dokumentets sökväg, t.ex. agent/devctl
+	EveryMinutes int    `json:"everyMinutes"` // hur ofta (skrivs bara om något ändrats, och minst en gång i timmen)
+}
+
 type Config struct {
 	Port      int      `json:"port"`
 	Roots     []string `json:"roots"`
@@ -39,6 +46,7 @@ type Config struct {
 	Editor          string     `json:"editor"`
 	Obsidian        Obsidian   `json:"obsidian"`
 	Automation      Automation `json:"automation"`
+	Cloud           Cloud      `json:"cloud"`
 	// Minuter mellan automatiska uppdateringar av dagens logg (0 = av)
 	LogEveryMinutes int `json:"logEveryMinutes"`
 }
@@ -71,6 +79,7 @@ func defaults() Config {
 		Obsidian:        Obsidian{ProjectDir: "Projekt", LogDir: "Dev-logg", ReadVaults: []string{}},
 		LogEveryMinutes: 30,
 		Automation:      Automation{URL: "http://localhost:4777"},
+		Cloud:           Cloud{Doc: "agent/devctl", EveryMinutes: 15},
 	}
 }
 
