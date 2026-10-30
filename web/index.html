@@ -116,6 +116,11 @@ pre.term { flex: 1; min-height: 160px; margin: 0; background: #07090c; border: 1
 .pane .pc { color: var(--muted); font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pane .br { color: var(--ok); font: 10px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pane .role { color: var(--orch); font: 10px var(--mono); }
+.pane.role-main { border: 2px solid var(--warn); }
+.pane .role.main { color: var(--warn); font-weight: 600; }
+.badge.main { color: var(--warn); border-color: var(--warn); font-weight: 600; }
+.cwarn { margin: 0 10px 8px; padding: 6px 10px; border: 1px solid #6a4a24; background: #2a1f12; border-radius: 6px; color: var(--warn); font-size: 12px; }
+.tree .cwarn { margin: 2px 0 4px 28px; }
 .tree { padding: 10px 14px; font: 13px var(--mono); }
 .tree ul { list-style: none; margin: 0; padding-left: 22px; position: relative; }
 .tree > ul { padding-left: 0; }
@@ -292,7 +297,7 @@ dialog#help { width: min(860px, 94vw); max-height: 88vh; }
 
 <h4>Vad som körs (chipsen)</h4>
 <dl>
-  <dt><span class="chip pchip">▣ zsh · devctl:0</span></dt><dd>En tmux-pane som står i worktreen: programmet som körs i den (zsh = ett vanligt skal, 2.1.314 = Claude Code) och tmux-session:fönster. Klicka för att se vad den visar och skriva till den.</dd>
+  <dt><span class="chip pchip">▣ arbetsflöden per repo <span class="muted">worker</span></span></dt><dd>En tmux-pane som står i worktreen, med sin feature (titeln är "&lt;repo&gt; · &lt;feature>") och sin roll. ★ är repots huvudpane. Saknar panen namn visas programmet (zsh = ett vanligt skal, Claude = Claude Code). Klicka för att se vad den visar och skriva till den.</dd>
   <dt><span class="chip srv frontend">:8080 frontend</span></dt><dd>En lokal server som startats från worktreen: port och typ (grön frontend, lila mobil/Metro, orange backend, blå databas, turkos Docker). Klicka för att öppna den i webbläsaren.</dd>
   <dt><span class="chip srv">Python · 12 processer · 67 portar</span></dt><dd>Många portar från samma program (t.ex. Jupyter-kärnor), ihopslagna. Klicka för att se dem i Servrar.</dd>
   <dt><span class="chip ct">🐳 supabase · …</span></dt><dd>Docker/OrbStack-containrar vars projekt ligger i worktreen. Klicka för loggar, eller fliken Docker för alla.</dd>
@@ -392,7 +397,17 @@ const hostname = () => S.hostname;
 const short = p => String(p || "").replace(/^\/Users\/[^/]+/, "~");
 // Claude Code körs som en process som heter som sin version (t.ex. 2.1.314)
 const progName = cmd => /^\d+\.\d+\.\d+$/.test(cmd || "") || /^claude$/i.test(cmd || "") ? "Claude" : cmd;
-const paneLabel = p => { if (p.name) return p.name; const t = p.title && p.title !== hostname() ? p.title : ""; return t || progName(p.command); };
+// Claude Code sätter titeln själv ("✳ …", en spinner); den säger inget om vad panen är till för
+const autoTitle = t => !t || t === hostname() || /^[\u2800-\u28ff✳✻✽✶✢·*]\s/.test(t);
+// Panens namn enligt tmux-reglerna: "<repo> · <feature>". brief utelämnar repot där det redan syns (sessionen, repokortet).
+const paneLabel = (p, brief) => {
+  if (p.feature) return brief || !p.repo ? p.feature : `${p.repo} · ${p.feature}`;
+  const n = p.name || (autoTitle(p.title) ? "" : p.title);
+  if (n) return brief && p.repo && n.startsWith(p.repo + " · ") ? n.slice(p.repo.length + 3) : n;
+  return progName(p.command);
+};
+const roleBadge = p => p.role === "main" ? `<span class="badge main" title="Huvudpanen (@role main): stängs aldrig utan att du uttryckligen ber om det">★ huvud</span>`
+  : p.role ? `<span class="badge ${p.role === "orchestrator" ? "orch" : ""}">${esc(p.role)}</span>` : "";
 
 function render() {
   const nW = S.repos.reduce((a, r) => a + r.worktrees.filter(w => !w.missing).length, 0);
@@ -422,10 +437,10 @@ function renderBanner() {
 }
 
 // ---------- chips ----------
-function paneChip(id) {
+function paneChip(id, brief) {
   const x = findPane(id); if (!x) return "";
   const orch = x.w.kind === "global-orchestrator" || x.p.role === "orchestrator";
-  return `<span class="chip pchip ${orch ? "orchp" : ""}" data-pane="${esc(id)}" title="tmux-pane ${esc(id)} i ${esc(x.s.name)}:${x.w.index} (${esc(x.w.name)}) kör ${esc(progName(x.p.command))}${x.p.title && x.p.title !== hostname() ? " · " + esc(x.p.title) : ""}. Klicka för att se och skriva i den.">▣ ${esc(x.p.name || progName(x.p.command))} · ${esc(x.s.name)}:${x.w.index}</span>`;
+  return `<span class="chip pchip ${orch ? "orchp" : ""}" data-pane="${esc(id)}" title="${esc(paneLabel(x.p))}: tmux-pane ${esc(id)}${x.p.role ? " (" + esc(x.p.role) + ")" : ""} i ${esc(x.s.name)}:${x.w.index} (${esc(x.w.name)}), kör ${esc(progName(x.p.command))}. Klicka för att se och skriva i den.">${x.p.role === "main" ? "★" : "▣"} ${esc(paneLabel(x.p, brief))}${x.p.role && x.p.role !== "main" ? ` <span class="muted">${esc(x.p.role)}</span>` : ""}</span>`;
 }
 function serverChip(port) {
   const s = serverByPort(port); if (!s) return "";
@@ -517,7 +532,7 @@ function repoCard(r) {
 function wtRow(r, w) {
   const busy = w.panes.length + w.servers.length + w.containers.length > 0;
   const b = w.branch || `(${w.head})`;
-  const running = [...w.panes.map(paneChip), ...serverChips(w.servers), ...containerChips(w.containers)].join("");
+  const running = [...w.panes.map(id => paneChip(id, true)), ...serverChips(w.servers), ...containerChips(w.containers)].join("");
   return `<div class="wt ${busy ? "busy" : ""} ${w.missing ? "missing" : ""}">
     <div>
       <div class="bname">${esc(b)} ${w.main ? `<span class="badge" title="Repots huvudkatalog (den första worktreen)">huvud</span>` : ""} ${w.detached ? `<span class="badge warn" title="Ingen branch utcheckad, bara en commit">detached</span>` : ""} ${w.missing ? `<span class="badge bad" title="Katalogen finns inte längre (t.ex. en temporär mapp som raderats)">saknas</span>` : ""}</div>
@@ -654,6 +669,7 @@ function renderTmux(v) {
   if (opts.tmuxView === "tree") { v.innerHTML = bar + renderTree(sessActs); return; }
   v.innerHTML = bar + S.sessions.map(s => `<div class="card">
     <div class="chead"><span class="cname" data-rename-s="${esc(s.id)}" title="Dubbelklicka för att byta namn">${esc(s.name)}</span>${s.attached ? `<span class="badge ok">attached</span>` : ""}<span class="badge">${esc(s.id)}</span><span class="spacer"></span>${sessActs(s)}</div>
+    ${warnBox(s)}
     <div class="windows">${(f => f.list.map(({ w, depth }) => renderWindow(w, depth, s, f.kids)).join(""))(windowForest(s))}</div>
   </div>`).join("");
 }
@@ -665,9 +681,9 @@ function renderWindow(w, depth, s, kids) {
   const ps = w.panes.map(p => {
     const L = p.left / w.width * 100, T = p.top / w.height * 100, W = p.width / w.width * 100, H = p.height / w.height * 100;
     return `<div class="pane ${p.active ? "active" : ""} ${inspect?.id === p.id ? "sel" : ""} role-${esc((p.role || "").split("-")[0])}" data-pane="${esc(p.id)}"
-      style="left:${L}%;top:${T}%;width:calc(${W}% - 2px);height:calc(${H}% - 2px)" title="${esc(p.id)} · ${esc(progName(p.command))} · ${esc(p.path)}">
-      ${p.role ? `<div class="role">${esc(p.role)}</div>` : ""}
-      <div class="pt" data-rename-p="${esc(p.id)}" title="Dubbelklicka för att byta namn">${esc(paneLabel(p))}</div>
+      style="left:${L}%;top:${T}%;width:calc(${W}% - 2px);height:calc(${H}% - 2px)" title="${esc(paneLabel(p))} · ${esc(p.id)} · ${esc(progName(p.command))} · ${esc(p.path)}">
+      ${p.role ? `<div class="role ${esc(p.role)}">${p.role === "main" ? "★ huvud" : esc(p.role)}</div>` : ""}
+      <div class="pt" data-rename-p="${esc(p.id)}" title="Dubbelklicka för att byta namn">${esc(paneLabel(p, true))}</div>
       ${p.worktree ? `<div class="br">⎇ ${esc(p.worktree.repo)}@${esc(p.worktree.branch)}</div>` : ""}
       <div class="pc">${esc(p.id)} · ${esc(progName(p.command))}${p.ports?.length ? " · :" + p.ports.join(" :") : ""}</div>
     </div>`;
@@ -691,6 +707,20 @@ function renderWindow(w, depth, s, kids) {
   </div>`;
 }
 
+// Avvikelser från tmux-reglerna: ett repo per session, sessionen heter som repot och har en huvudpane.
+// Bara en varning; devctl flyttar inget själv. Orkestratorns session hör inte till ett repo.
+function sessionWarnings(s) {
+  if (s.name === (S.orchSession || "devctl")) return [];
+  const ps = s.windows.flatMap(w => w.panes.map(p => ({ w, p })));
+  const out = [];
+  if (!S.repos.some(r => r.name === s.name)) out.push(`Sessionen heter inte som ett repo. Döp om den till repots namn (✎).`);
+  else for (const { w, p } of ps) if (p.worktree && p.worktree.repo !== s.name)
+    out.push(`${p.id} (${paneLabel(p)}) i fönster ${w.index}: ${progName(w.name)} står i ${p.worktree.repo}, inte i ${s.name}. Flytta den till sessionen ${p.worktree.repo}.`);
+  if (!ps.some(x => x.p.role === "main")) out.push(`Ingen huvudpane (@role main). Säg till Claude vilken pane som är repots huvudpane.`);
+  return out;
+}
+const warnBox = s => (w => w.length ? `<div class="cwarn">${w.map(t => `<div>⚠ ${esc(t)}</div>`).join("")}</div>` : "")(sessionWarnings(s));
+
 // Vilka repos och branches fönstrets panes jobbar i
 function windowBranches(w) {
   const refs = [...new Set(w.panes.filter(p => p.worktree).map(p => `${p.worktree.repo}@${p.worktree.branch}`))];
@@ -704,12 +734,13 @@ function renderTree(sessActs) {
       <span class="tsub">${w.panes.length} pane${w.panes.length === 1 ? "" : "s"}${(kids[w.id] || []).length ? ` · ${kids[w.id].length} underfönster` : ""}</span>
       <span class="tacts">${B("newChild", "+ Underfönster", `data-w="${esc(w.id)}"`, "")}${B("addPane", "+ Pane", `data-w="${esc(w.id)}"`, "")}${B("setParent", "⤷ Flytta", `data-w="${esc(w.id)}"`, "")}${B("renameWindow", "✎", `data-w="${esc(w.id)}"`, "Byt namn")}${B("kill", "✕", `data-kind="window" data-t="${esc(w.id)}"`, "Stäng", "danger")}</span></div>
     ${collapsed.has(w.id) ? "" : `<ul>${w.panes.map(p => `<li><div class="trow ${inspect?.id === p.id ? "sel" : ""}" data-pane="${esc(p.id)}"><span class="tog"></span><span>${p.active ? "▣" : "□"}</span>
-      ${p.role ? `<span class="badge orch">${esc(p.role)}</span>` : ""}<b data-rename-p="${esc(p.id)}" title="Dubbelklicka för att byta namn">${esc(paneLabel(p))}</b>
+      ${roleBadge(p)}<b data-rename-p="${esc(p.id)}" title="Dubbelklicka för att byta namn">${esc(paneLabel(p, true))}</b>
       ${p.worktree ? `<span class="badge ok">⎇ ${esc(p.worktree.repo)}@${esc(p.worktree.branch)}</span>` : ""}
       ${(p.ports || []).map(port => `<span class="badge">:${port}</span>`).join("")}
       <span class="tsub">${esc(p.id)} · ${esc(progName(p.command))} · ${esc(short(p.path))}</span></div></li>`).join("")}${(kids[w.id] || []).map(c => node(c, kids)).join("")}</ul>`}</li>`;
   return `<div class="card tree"><ul>${S.sessions.map(s => { const { kids } = windowForest(s); return `<li>
     <div class="trow">${tog(s.id)}<span>🗂</span><b data-rename-s="${esc(s.id)}" title="Dubbelklicka för att byta namn">${esc(s.name)}</b>${s.attached ? `<span class="badge ok">attached</span>` : ""}<span class="tsub">${s.windows.length} fönster</span><span class="tacts">${sessActs(s)}</span></div>
+    ${warnBox(s)}
     ${collapsed.has(s.id) ? "" : `<ul>${(kids[""] || []).map(w => node(w, kids)).join("")}</ul>`}</li>`; }).join("")}</ul></div>`;
 }
 
@@ -756,7 +787,7 @@ function renderWorkers(workers) {
   const el = $("#workers"); if (!el) return;
   el.style.display = workers.length ? "" : "none";
   el.innerHTML = workers.length ? `<span class="muted small">Workers:</span>` + workers.map(({ w, p }) =>
-    `<span class="chip pchip" data-pane="${esc(p.id)}" title="${esc(paneLabel(p))}">⚙ ${esc(w.name)}${p.worktree ? ` <span class="muted">⎇ ${esc(p.worktree.branch)}</span>` : ""}</span>`).join("") : "";
+    `<span class="chip pchip" data-pane="${esc(p.id)}" title="${esc(paneLabel(p))} · ${esc(p.id)}">⚙ ${esc(paneLabel(p))}${p.worktree ? ` <span class="muted">⎇ ${esc(p.worktree.branch)}</span>` : ""}</span>`).join("") : "";
 }
 
 // Gör om Claude Codes terminalbild till ett samtal: dina meddelanden, svaren och verktygsanrop.
@@ -795,7 +826,7 @@ function parseClaude(text) {
 function md(t) {
   // :8080 öppnar servern, %12 visar panen
   const refs = h => h.replace(/(^|[\s(>])(:\d{3,5})\b/g, (m, p, port) => `${p}<span class="ochip" data-ochip="${port.slice(1)}" title="Öppna localhost${port}">${port}</span>`)
-    .replace(/(^|[\s(>])(%\d{1,4})\b/g, (m, p, id) => findPane(id) ? `${p}<span class="ochip" data-ochip="${id}" title="Visa panen">${id}</span>` : m);
+    .replace(/(^|[\s(>])(%\d{1,4})\b/g, (m, p, id) => (x => x ? `${p}<span class="ochip" data-ochip="${id}" title="Visa ${esc(paneLabel(x.p))}">${id}</span>` : m)(findPane(id)));
   const inline = s => refs(esc(s).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>"));
   const out = []; let list = false, table = null;
   const flush = () => {
@@ -1348,7 +1379,7 @@ document.addEventListener("click", async e => {
     if (a === "split") return api("split", { pane: id, direction: pa.dataset.dir });
     if (a === "zoom") return api("zoom", { pane: id });
     if (a === "focus") return api("select", { pane: id });
-    if (a === "title") return form("Byt namn på pane", [{ key: "title", label: "Namn", value: findPane(id)?.p.name || "", ph: paneLabel(findPane(id).p) }], "Spara", d => api("title_pane", { pane: id, ...d }), "Programmet i panen (t.ex. Claude) kan inte skriva över namnet. Lämna tomt för att låta programmet styra titeln igen.");
+    if (a === "title") return renamePane(id);
   }
   const chEl = t.closest("[data-changes]");
   if (chEl) { const r = S.repos.find(x => x.worktrees.some(w => w.path === chEl.dataset.changes)); const w = r?.worktrees.find(x => x.path === chEl.dataset.changes);
@@ -1465,12 +1496,19 @@ document.addEventListener("click", async e => {
 });
 
 // Dubbelklick på ett namn i tmux-vyn byter namn på sessionen, fönstret eller panen
+// Byt namn på en pane enligt tmux-reglerna: man anger featuren, titeln blir "<repo> · <feature>"
+function renamePane(id) {
+  const f = findPane(id); if (!f) return;
+  const repo = f.p.repo || f.p.worktree?.repo || f.s.name;
+  return form("Byt namn på pane", [{ key: "feature", label: "Feature", value: f.p.feature || (f.p.name ? paneLabel(f.p, true) : ""), ph: "kort, som en PR-titel, t.ex. arbetsflöden per repo" }], "Spara",
+    x => api("title_pane", { pane: id, ...x }), `Titeln blir "${esc(repo)} · &lt;feature&gt;". Programmet i panen (t.ex. Claude) kan inte skriva över den. Lämna tomt för att låta programmet styra titeln igen.`);
+}
 document.addEventListener("dblclick", e => {
   const t = e.target;
   const sEl = t.closest("[data-rename-s]"), wEl = t.closest("[data-rename-w]"), pEl = t.closest("[data-rename-p]");
   if (sEl) { const s = S.sessions.find(x => x.id === sEl.dataset.renameS); return form("Byt namn på session", [{ key: "name", label: "Namn", value: s.name }], "Spara", x => api("rename_session", { session: s.id, ...x })); }
   if (wEl) { const w = S.sessions.flatMap(x => x.windows).find(x => x.id === wEl.dataset.renameW); return form("Byt namn på fönster", [{ key: "name", label: "Namn", value: progName(w.name) }], "Spara", x => api("rename_window", { window: w.id, ...x }), "Namnet behålls även om programmet i fönstret försöker byta det."); }
-  if (pEl) { e.preventDefault(); const f = findPane(pEl.dataset.renameP); return form("Byt namn på pane", [{ key: "title", label: "Namn", value: f?.p.name || "" , ph: paneLabel(f.p) }], "Spara", x => api("title_pane", { pane: f.p.id, ...x }), "Namnet visas i tmux, i chipparna i översikten och i kartan. Programmet i panen (t.ex. Claude) kan inte skriva över det. Lämna tomt för att låta programmet styra titeln igen."); }
+  if (pEl) { e.preventDefault(); return renamePane(pEl.dataset.renameP); }
 });
 
 document.addEventListener("change", e => {

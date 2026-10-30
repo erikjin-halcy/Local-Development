@@ -241,22 +241,63 @@ func (c *Controller) renameWindow(a Args) (any, error) {
 	return nil, err
 }
 
+// titlePane döper en pane enligt tmux-reglerna: @feature och titeln "<repo> · <feature>".
+// feature kan också komma som title (med eller utan "<repo> · " först).
 func (c *Controller) titlePane(a Args) (any, error) {
 	if err := a.need("pane"); err != nil {
 		return nil, err
 	}
-	pane, title := a.S("pane"), a.S("title")
-	if title == "" {
-		// Tomt namn: låt programmet sätta titeln igen
-		_, _ = tmux("set-option", "-p", "-u", "-t", pane, "allow-set-title")
-		_, _ = tmux("set-option", "-p", "-u", "-t", pane, "@name")
-		return nil, nil
+	pane := a.S("pane")
+	info, err := tmuxOut("display-message", "-p", "-t", pane, fields("@repo", "session_name", "pane_current_path"))
+	if err != nil {
+		return nil, fmt.Errorf("hittar ingen pane %s", pane)
 	}
+	p := strings.Split(info, "\x1f")
+	repo, session, cwd := p[0], p[1], p[2]
+	if repo == "" {
+		// Repot är worktreen panen ligger i, annars sessionens namn (sessionen heter som repot)
+		repo = session
+		best := 0
+		for _, r := range c.col.Snapshot().Repos {
+			for _, wt := range r.Worktrees {
+				if strings.HasPrefix(cwd+"/", wt.Path+"/") && len(wt.Path) > best {
+					best, repo = len(wt.Path), r.Name
+				}
+			}
+		}
+		_, _ = tmux("set-option", "-p", "-t", pane, "@repo", repo)
+	}
+	feature := featureArg(a, repo)
+	if feature == "" {
+		return nil, untitle(pane)
+	}
+	return nil, setTitle(pane, repo, feature)
+}
+
+func featureArg(a Args, repo string) string {
+	f := a.S("feature")
+	if f == "" {
+		f = a.S("title")
+	}
+	return strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(f), repo+" · "))
+}
+
+// Tomt namn: låt programmet sätta titeln igen
+func untitle(pane string) error {
+	for _, o := range []string{"allow-set-title", "@name", "@feature"} {
+		_, _ = tmux("set-option", "-p", "-u", "-t", pane, o)
+	}
+	return nil
+}
+
+func setTitle(pane, repo, feature string) error {
+	title := repo + " · " + feature
 	// Programmet (t.ex. Claude Code) får inte skriva över namnet
 	_, _ = tmux("set-option", "-p", "-t", pane, "allow-set-title", "off")
+	_, _ = tmux("set-option", "-p", "-t", pane, "@feature", feature)
 	_, _ = tmux("set-option", "-p", "-t", pane, "@name", title)
 	_, err := tmux("select-pane", "-t", pane, "-T", title)
-	return nil, err
+	return err
 }
 
 func (c *Controller) kill(a Args) (any, error) {

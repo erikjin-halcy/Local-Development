@@ -20,16 +20,18 @@ type Orchestrator struct {
 }
 
 type Snapshot struct {
-	Time         time.Time         `json:"time"`
-	Hostname     string            `json:"hostname"`
-	Repos        []Repo            `json:"repos"`
-	Sessions     []Session         `json:"sessions"`
-	Servers      []Server          `json:"servers"`
-	Docker       Docker            `json:"docker"`
-	Orchestrator *Orchestrator     `json:"orchestrator"`
-	Vault        string            `json:"vault"`
-	Automation   Automation        `json:"automation"`
-	Errors       map[string]string `json:"errors"`
+	Time         time.Time     `json:"time"`
+	Hostname     string        `json:"hostname"`
+	Repos        []Repo        `json:"repos"`
+	Sessions     []Session     `json:"sessions"`
+	Servers      []Server      `json:"servers"`
+	Docker       Docker        `json:"docker"`
+	Orchestrator *Orchestrator `json:"orchestrator"`
+	// Orkestratorns session (config session); undantagen från regeln att en session heter som ett repo
+	OrchSession string            `json:"orchSession"`
+	Vault       string            `json:"vault"`
+	Automation  Automation        `json:"automation"`
+	Errors      map[string]string `json:"errors"`
 }
 
 // Collector håller en färsk ögonblicksbild. tmux, servrar och Docker läses varannan sekund,
@@ -461,7 +463,7 @@ func (c *Collector) refreshFast() {
 	c.mu.Lock()
 	c.snap = Snapshot{
 		Time: time.Now(), Hostname: strings.Split(host, ".")[0], Repos: repos, Sessions: sessions,
-		Servers: servers, Docker: docker, Orchestrator: orch, Vault: c.cfg.Obsidian.Vault, Errors: errs,
+		Servers: servers, Docker: docker, Orchestrator: orch, OrchSession: c.cfg.Session, Vault: c.cfg.Obsidian.Vault, Errors: errs,
 		Automation: automation,
 	}
 	if c.snap.Sessions == nil {

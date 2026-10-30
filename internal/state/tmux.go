@@ -24,7 +24,10 @@ type Pane struct {
 	Height  int    `json:"height"`
 	Role    string `json:"role"`
 	// Namn som användaren gett panen (@name); visas i stället för programmet
-	Name     string `json:"name,omitempty"`
+	Name string `json:"name,omitempty"`
+	// Repo och feature enligt tmux-reglerna (@repo, @feature); titeln är "<repo> · <feature>"
+	Repo     string `json:"repo,omitempty"`
+	Feature  string `json:"feature,omitempty"`
 	Dead     bool   `json:"dead"`
 	PID      int    `json:"pid"`
 	Worktree *Ref   `json:"worktree,omitempty"`
@@ -125,18 +128,19 @@ func collectTmux() ([]Session, error) {
 	}
 	paneRows, err := rows("list-panes", "-a", "-F", fmtFields("window_id", "pane_id", "pane_index", "pane_title",
 		"pane_active", "pane_current_command", "pane_current_path", "pane_left", "pane_top", "pane_width",
-		"pane_height", "@role", "pane_dead", "pane_pid", "@name"))
+		"pane_height", "@role", "pane_dead", "pane_pid", "@name", "@repo", "@feature"))
 	if err != nil {
 		return nil, err
 	}
 	for _, r := range paneRows {
-		if len(r) < 15 {
+		if len(r) < 17 {
 			continue
 		}
 		if w := windows[r[0]]; w != nil {
 			w.Panes = append(w.Panes, Pane{ID: r[1], Index: atoi(r[2]), Title: r[3], Active: r[4] == "1",
 				Command: r[5], Path: r[6], Left: atoi(r[7]), Top: atoi(r[8]), Width: atoi(r[9]),
-				Height: atoi(r[10]), Role: r[11], Dead: r[12] == "1", PID: atoi(r[13]), Name: r[14]})
+				Height: atoi(r[10]), Role: r[11], Dead: r[12] == "1", PID: atoi(r[13]), Name: r[14],
+				Repo: r[15], Feature: r[16]})
 		}
 	}
 	for _, w := range winOrder {
