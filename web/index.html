@@ -529,6 +529,8 @@ function repoCard(r) {
   </div>`;
 }
 
+// Städförslag: samma villkor som devctl cleanup (mergad med egna commits, rent, inget igång)
+const cleanable = (r, w) => w.merged && !w.main && !w.missing && !w.locked && w.branch && w.branch !== r.default && !w.changes && !(w.panes.length + w.servers.length + w.containers.length);
 function wtRow(r, w) {
   const busy = w.panes.length + w.servers.length + w.containers.length > 0;
   const b = w.branch || `(${w.head})`;
@@ -544,6 +546,7 @@ function wtRow(r, w) {
         ${w.ahead || w.behind ? `<span class="badge" ${w.ahead ? `style="cursor:pointer" data-changes="${esc(w.path)}"` : ""} title="${w.ahead} commits före och ${w.behind} efter ${esc(w.upstream)}${w.ahead ? ". Klicka för att se dem." : ""}">↑${w.ahead} ↓${w.behind}</span>` : ""}
         ${!w.upstream && w.branch && !w.missing ? `<span class="badge" title="Branchen finns bara lokalt (inte pushad)">lokal</span>` : ""}
         ${ciBadge(r, w.branch, w.ci)}
+        ${cleanable(r, w) ? `<span class="badge ok" title="Branchen har egna commits och är mergad i ${esc(r.default)}, inget ocommittat och inget igång. Städa tar bort worktreen och branchen (git branch -d).">mergad · kan tas bort</span>` : ""}
         ${w.pr ? `<a class="badge pr" href="${esc(w.pr.url)}" target="_blank" rel="noopener" title="${esc(w.pr.title)}">PR #${w.pr.number}${w.pr.draft ? " utkast" : ""}${w.pr.review === "APPROVED" ? " ✓" : w.pr.review === "CHANGES_REQUESTED" ? " ✗" : ""}</a>` : ""}
       </div>
       ${w.last.subject ? `<div class="commit" title="Senaste commit: ${esc(w.last.hash)} av ${esc(w.last.author)}">${esc(w.last.subject)} · ${esc(w.last.when)}</div>` : ""}
@@ -556,6 +559,7 @@ function wtRow(r, w) {
       <button class="sm" data-act="term" data-path="${esc(w.path)}" title="Öppna ett nytt tmux-fönster i den här katalogen">Terminal</button>
       <button class="sm" data-act="note" data-repo="${esc(r.path)}" data-branch="${esc(w.branch)}" ${w.branch && S.vault ? "" : "disabled"} title="${w.note ? "Öppna branchens anteckning i Obsidian" : "Skapa en anteckning för branchen i Obsidian"}">${w.note ? "Anteckning" : "+ Anteckning"}</button>
       <button class="sm" data-act="editor" data-path="${esc(w.path)}" title="Öppna katalogen i editorn">Editor</button>`}
+      ${cleanable(r, w) ? `<button class="sm" data-act="cleanup" data-repo="${esc(r.name)}" data-branch="${esc(w.branch)}" title="Ta bort worktreen och branchen ${esc(w.branch)} (git worktree remove + git branch -d)">Städa</button>` : ""}
       ${w.missing ? `<button class="sm" data-act="prune" data-repo="${esc(r.path)}" title="Ta bort git:s uppgifter om worktrees vars katalog inte finns längre">Rensa</button>`
         : w.main ? "" : `<button class="sm danger" data-act="wtRemove" data-path="${esc(w.path)}" data-changes="${w.changes}" title="Ta bort worktreens katalog. Branchen och dess commits finns kvar.">✕</button>`}
     </div>
@@ -1425,6 +1429,9 @@ document.addEventListener("click", async e => {
       const res = await api("worktree_add", { repo: d.repo, branch: x.branch, base: x.base }); toast(`Worktree: ${short(res.path)}`, true);
     }, "Branchen checkas ut i en egen katalog bredvid repot, så att du kan jobba på flera branches samtidigt."); }
     case "wtAddBranch": { const res = await api("worktree_add", { repo: d.repo, branch: d.branch }); return toast(`Worktree: ${short(res.path)}`, true); }
+    case "cleanup":
+      if (!confirm(`Ta bort worktreen och branchen ${d.branch} i ${d.repo}?\n\nBranchen är mergad, så inga commits försvinner (git branch -d).`)) return;
+      return api("cleanup", { repo: d.repo, branch: d.branch, confirm: true }).then(() => toast(`${d.branch} är borttagen`));
     case "wtRemove": if (!confirm2()) return;
       return api("worktree_remove", { path: d.path, force: d.changes > 0 && b.dataset.forced === "1" }).catch(() => { if (d.changes > 0) { b.dataset.forced = "1"; toast(`Worktreen har ${d.changes} ocommittade ändringar. Klicka ✕ två gånger till för att ta bort ändå.`); } });
     case "graph": { const r = repoOf(d.repo); return openInspect({ kind: "commits", repo: d.repo, title: `Historik · ${r.name}`, rows: [], more: false }); }

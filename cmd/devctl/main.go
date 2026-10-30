@@ -52,6 +52,7 @@ const usage = `devctl – kontrollpanel för lokalt utvecklingsarbete
   devctl orchestrator [--reload] starta (eller visa) den globala orkestratorn; --reload laddar nya instruktioner
   devctl pane close <%%id> --yes       avsluta Claude och stäng en worker-pane (aldrig huvudpanen)
   devctl report <%%id> [--feature f]   utkast till sessionsrapport i Obsidian (innan panen stängs)
+  devctl cleanup [--repo r] [--yes]    mergade worktrees och branches som inte används; --yes tar bort dem
   devctl brief                  orkestratorns systemprompt
   devctl autostart [--remove]    starta servern vid inloggning (launchd)
   devctl config                  sökväg till konfigurationen
@@ -246,6 +247,34 @@ func main() {
 		must(err)
 		o := res.(map[string]any)
 		fmt.Printf("Orkestratorn körs i tmux-sessionen %v, pane %v.\nAttacha: tmux attach -t %v   eller chatta i http://localhost:%d\n", o["session"], o["pane"], o["session"], cfg.Port)
+	case "cleanup":
+		// devctl cleanup [--repo r] visar förslagen; --yes tar bort dem
+		res, err := c.do("cleanup_list", map[string]any{"repo": flags["repo"]})
+		must(err)
+		items, _ := res.([]any)
+		if len(items) == 0 {
+			fmt.Println("Inget att städa.")
+			return
+		}
+		_, yes := flags["yes"]
+		for _, x := range items {
+			it := x.(map[string]any)
+			what := "branch"
+			if p, _ := it["path"].(string); p != "" {
+				what = "worktree + branch"
+			}
+			fmt.Printf("%-18s %-40s %-18s %s\n", it["repo"], it["branch"], what, it["why"])
+			if yes {
+				if _, err := c.do("cleanup", map[string]any{"repo": it["repo"], "branch": it["branch"], "confirm": true}); err != nil {
+					fmt.Printf("  ✗ %v\n", err)
+				} else {
+					fmt.Println("  ✓ borttagen")
+				}
+			}
+		}
+		if !yes {
+			fmt.Println("\nInget har tagits bort. Kör devctl cleanup --yes för att ta bort dem (git branch -d, aldrig -D).")
+		}
 	case "report":
 		if len(pos) < 1 {
 			fail(errors.New("användning: devctl report <%id> [--feature f] [--repo r]"))

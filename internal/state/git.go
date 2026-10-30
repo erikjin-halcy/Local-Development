@@ -52,6 +52,8 @@ type Worktree struct {
 	Servers    []int    `json:"servers"`
 	Containers []string `json:"containers"`
 	Note       string   `json:"note,omitempty"`
+	// Branchen har egna commits och är mergad i huvudbranchen (lokalt eller på origin)
+	Merged bool `json:"merged,omitempty"`
 }
 
 type Branch struct {
@@ -66,6 +68,7 @@ type Branch struct {
 	Worktree string `json:"worktree,omitempty"`
 	PR       *PR    `json:"pr,omitempty"`
 	CI       *CI    `json:"ci,omitempty"`
+	Merged   bool   `json:"merged,omitempty"`
 }
 
 type Repo struct {
@@ -220,6 +223,11 @@ func loadRepo(common string) *Repo {
 		r.Default = r.Worktrees[0].Branch
 	}
 
+	merged := mergedBranches(main, r.Default)
+	for i := range r.Worktrees {
+		r.Worktrees[i].Merged = merged[r.Worktrees[i].Branch]
+	}
+
 	const f = "%(refname:short)%1f%(upstream:short)%1f%(upstream:track,nobracket)%1f%(committerdate:relative)%1f%(committerdate:unix)%1f%(contents:subject)"
 	if out, err := git(main, "for-each-ref", "--sort=-committerdate", "--count=40", "--format="+f, "refs/heads"); err == nil {
 		inWt := map[string]string{}
@@ -236,6 +244,7 @@ func loadRepo(common string) *Repo {
 			b := Branch{Name: p[0], Upstream: p[1], When: p[3], Subject: p[5], Worktree: inWt[p[0]]}
 			b.Unix = int64(atoi(p[4]))
 			b.Ahead, b.Behind, b.Gone = parseTrack(p[2])
+			b.Merged = merged[b.Name]
 			r.Branches = append(r.Branches, b)
 			if b.Unix > r.LastUnix {
 				r.LastUnix = b.Unix
@@ -243,6 +252,55 @@ func loadRepo(common string) *Repo {
 		}
 	}
 	return r
+}
+
+// mergedBranches: lokala branches (utom huvudbranchen) som är mergade i huvudbranchen lokalt eller på
+// origin och som har haft egna commits. En nystartad branch som pekar på en commit i main räknas inte.
+func mergedBranches(path, def string) map[string]bool {
+	out := map[string]bool{}
+	if def == "" {
+		return out
+	}
+	for _, base := range []string{def, "origin/" + def} {
+		list, err := git(path, "branch", "--merged", base, "--format=%(refname:short)")
+		if err != nil {
+			continue
+		}
+		for _, b := range strings.Fields(list) {
+			if b != def {
+				out[b] = true
+			}
+		}
+	}
+	for b := range out {
+		if !hasOwnCommits(path, b) {
+			delete(out, b)
+		}
+	}
+	return out
+}
+
+// hasOwnCommits: branchens reflog visar fler händelser än att den skapades (commits, merge, reset).
+// Utan reflog: branchens spets ligger inte på huvudbranchens första-förälder-kedja (mergad med merge-commit).
+func hasOwnCommits(path, branch string) bool {
+	if out, err := git(path, "reflog", "show", "--format=%gs", "refs/heads/"+branch, "--"); err == nil {
+		lines := strings.Split(strings.TrimSpace(out), "\n")
+		if len(lines) > 1 {
+			return true
+		}
+		if len(lines) == 1 && lines[0] != "" && !strings.HasPrefix(lines[0], "branch: Created") {
+			return true
+		}
+		if len(lines) == 1 && lines[0] != "" {
+			return false
+		}
+	}
+	tip, err := git(path, "rev-parse", branch)
+	if err != nil {
+		return false
+	}
+	fp, _ := git(path, "rev-list", "--first-parent", "-n", "500", "HEAD")
+	return !strings.Contains(fp, strings.TrimSpace(tip))
 }
 
 func parseTrack(s string) (ahead, behind int, gone bool) {
