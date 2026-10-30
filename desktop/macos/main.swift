@@ -212,6 +212,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         let own = (url.host == "localhost" || url.host == "127.0.0.1") && url.port == port
         // Inbäddade lokala sidor (t.ex. Local-Automation i Automation-fliken) laddas i sin ram
         let localFrame = (url.host == "localhost" || url.host == "127.0.0.1") && action.targetFrame?.isMainFrame == false
+        // Sidor som kräver Google-inloggning (t.ex. Datorn i Local Automation) fungerar inte inbäddat:
+        // Google tillåter inte inloggning i appens webbvy, så de öppnas i webbläsaren
+        if localFrame && url.path.hasSuffix("/dator.html") {
+            NSWorkspace.shared.open(url)
+            return decisionHandler(.cancel)
+        }
         if own || localFrame || url.scheme == "about" {
             return decisionHandler(.allow)
         }
