@@ -1,0 +1,729 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>devctl</title>
+<style>
+:root {
+  --bg: #0d1117; --panel: #151b23; --panel2: #1b2330; --line: #2a3442; --text: #d8dee7; --muted: #8a96a6;
+  --accent: #5fb3ff; --orch: #c792ea; --ok: #7ee787; --warn: #ffb86b; --bad: #ff6b6b; --pr: #a5d6ff;
+  --fe: #7ee787; --be: #ffb86b; --db: #79c0ff; --dk: #56d4dd; --ai: #d2a8ff;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 -apple-system, system-ui, sans-serif; }
+a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; white-space: nowrap; }
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); color: #04121f; border-color: var(--accent); font-weight: 600; }
+button.orch { background: var(--orch); color: #1a0826; border-color: var(--orch); font-weight: 600; }
+button.sm { padding: 1px 7px; font-size: 12px; }
+button.danger:hover, button.armed { border-color: var(--bad); color: var(--bad); }
+button:disabled { opacity: .4; cursor: not-allowed; }
+input, select, textarea { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; width: 100%; }
+input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); }
+input[type=checkbox] { width: auto; }
+header { display: flex; align-items: center; gap: 14px; padding: 10px 20px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--bg); z-index: 10; flex-wrap: wrap; }
+header h1 { font: 700 16px var(--mono); margin: 0; }
+#status { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex: none; }
+#status.err { background: var(--bad); }
+.stats { color: var(--muted); font-size: 13px; }
+.tabs { display: flex; gap: 2px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 2px; }
+.tabs button { border: 0; background: transparent; color: var(--muted); border-radius: 6px; }
+.tabs button.on { background: var(--panel2); color: var(--text); }
+.tabs .n { font-size: 11px; color: var(--muted); margin-left: 3px; }
+.spacer { flex: 1; }
+main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; padding: 16px 20px; align-items: start; }
+main.inspecting { grid-template-columns: minmax(0, 1fr) 460px; }
+@media (max-width: 1100px) { main.inspecting { grid-template-columns: minmax(0, 1fr); } }
+.toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+.toolbar input[type=search] { max-width: 280px; }
+.toolbar label { display: flex; gap: 5px; align-items: center; color: var(--muted); font-size: 13px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 14px; }
+.chead { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.cname { font: 600 15px var(--mono); }
+.muted { color: var(--muted); } .small { font-size: 12px; } .mono { font-family: var(--mono); }
+.badge { font-size: 11px; padding: 1px 7px; border-radius: 10px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.badge.ok { color: var(--ok); border-color: #2f5e37; } .badge.warn { color: var(--warn); border-color: #6a4a24; }
+.badge.orch { color: var(--orch); border-color: #5b3f70; } .badge.pr { color: var(--pr); border-color: #2b4a6b; }
+.badge.bad { color: var(--bad); border-color: #6b2b2b; }
+.k-frontend { color: var(--fe); border-color: #2f5e37; } .k-backend { color: var(--be); border-color: #6a4a24; }
+.k-database { color: var(--db); border-color: #24476b; } .k-docker { color: var(--dk); border-color: #1f5257; }
+.k-ai { color: var(--ai); border-color: #4b3a6b; } .k-dev { color: var(--text); }
+.wt { display: grid; grid-template-columns: minmax(220px, 1.2fr) minmax(200px, 1.3fr) minmax(160px, 1.3fr) auto; gap: 10px; padding: 9px 14px; border-bottom: 1px solid #202936; align-items: center; }
+.wt:last-child { border-bottom: 0; }
+.wt.busy { background: #111a24; }
+.wt.missing { opacity: .45; }
+@media (max-width: 1300px) { .wt { grid-template-columns: 1fr 1fr; } }
+.bname { font: 600 13px var(--mono); word-break: break-all; }
+.bpath { font: 11px var(--mono); color: var(--muted); word-break: break-all; }
+.row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.chip { display: inline-flex; gap: 4px; align-items: center; font: 11.5px var(--mono); padding: 2px 7px; border-radius: 5px; background: var(--panel2); border: 1px solid var(--line); cursor: pointer; white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.chip:hover { border-color: var(--accent); }
+.chip.pane { border-left: 3px solid var(--accent); } .chip.srv { border-left: 3px solid var(--be); }
+.chip.srv.frontend { border-left-color: var(--fe); } .chip.srv.database { border-left-color: var(--db); }
+.chip.ct { border-left: 3px solid var(--dk); }
+.chip.orchp { border-left-color: var(--orch); }
+.commit { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acts { display: flex; gap: 4px; justify-content: flex-end; flex-wrap: wrap; }
+details.branches { padding: 6px 14px 10px; }
+details.branches summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+.blist { display: grid; grid-template-columns: minmax(200px, auto) auto auto 1fr auto; gap: 4px 12px; margin-top: 8px; font-size: 12px; align-items: center; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; color: var(--muted); font-weight: 500; font-size: 12px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+td { padding: 7px 10px; border-bottom: 1px solid #202936; vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+td.acts { display: table-cell; white-space: nowrap; text-align: right; }
+td.acts button { margin-left: 4px; }
+td.cmd { font: 11.5px var(--mono); color: var(--muted); max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; background: var(--muted); }
+.dot.on { background: var(--ok); } .dot.blue { background: var(--accent); }
+.empty { color: var(--muted); padding: 40px; text-align: center; border: 1px dashed var(--line); border-radius: 10px; }
+aside { position: sticky; top: 64px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; height: calc(100vh - 84px); display: none; flex-direction: column; gap: 10px; }
+main.inspecting aside { display: flex; }
+aside h2 { margin: 0; font: 600 14px var(--mono); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+aside .meta { color: var(--muted); font: 12px var(--mono); word-break: break-all; }
+pre.term { flex: 1; min-height: 160px; margin: 0; background: #07090c; border: 1px solid var(--line); border-radius: 6px; padding: 8px; font: 11.5px/1.35 var(--mono); overflow: auto; white-space: pre-wrap; word-break: break-word; }
+/* tmux-karta */
+.windows { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; padding: 12px; }
+.window { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.window.active { border-color: #35506e; }
+.window.orchestrator, .window.global-orchestrator { border-color: var(--orch); }
+.window.child { border-left: 3px solid #35506e; }
+.wrel { padding: 6px 10px 0; font: 11px var(--mono); color: var(--muted); }
+.whead { display: flex; align-items: center; gap: 5px; padding: 7px 10px; font-size: 13px; flex-wrap: wrap; }
+.wname { font-family: var(--mono); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.map { position: relative; margin: 0 10px 10px; background: var(--bg); border-radius: 4px; }
+.pane { position: absolute; border: 1px solid var(--line); border-radius: 3px; padding: 4px 6px; overflow: hidden; cursor: pointer; font-size: 11px; background: #12171e; }
+.pane:hover { border-color: var(--accent); }
+.pane.active { background: #152030; }
+.pane.sel, .trow.sel { box-shadow: 0 0 0 1px var(--accent) inset; border-color: var(--accent); }
+.pane.role-orchestrator { background: #22172d; }
+.pane .pt { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pane .pc { color: var(--muted); font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pane .br { color: var(--ok); font: 10px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pane .role { color: var(--orch); font: 10px var(--mono); }
+.tree { padding: 10px 14px; font: 13px var(--mono); }
+.tree ul { list-style: none; margin: 0; padding-left: 22px; position: relative; }
+.tree > ul { padding-left: 0; }
+.tree ul ul::before { content: ""; position: absolute; left: 9px; top: 0; bottom: 14px; border-left: 1px solid var(--line); }
+.tree ul ul > li { position: relative; }
+.tree ul ul > li::before { content: ""; position: absolute; left: -13px; top: 15px; width: 11px; border-top: 1px solid var(--line); }
+.trow { display: flex; align-items: center; gap: 8px; padding: 3px 6px; border-radius: 6px; min-height: 28px; }
+.trow:hover { background: var(--panel2); }
+.trow .tacts { display: none; gap: 4px; margin-left: auto; }
+.trow:hover .tacts { display: flex; }
+.trow[data-pane] { cursor: pointer; }
+.tog { width: 16px; color: var(--muted); cursor: pointer; text-align: center; flex: none; }
+.tsub { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; background: transparent; color: var(--muted); }
+.seg button.on { background: var(--panel2); color: var(--text); }
+/* orkestrator */
+.orchgrid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 14px; }
+@media (max-width: 1100px) { .orchgrid { grid-template-columns: 1fr; } }
+.orchgrid .chat { display: flex; flex-direction: column; gap: 8px; height: calc(100vh - 150px); }
+.orchgrid .chat pre.term { font-size: 12.5px; }
+.worker { padding: 8px 12px; border-bottom: 1px solid #202936; cursor: pointer; }
+.worker:hover { background: var(--panel2); }
+.worker:last-child { border-bottom: 0; }
+dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 12px; padding: 0; width: min(520px, 92vw); }
+dialog::backdrop { background: #0009; }
+dialog form { padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+dialog h3 { margin: 0; font: 600 15px var(--mono); }
+dialog label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+dialog .hint { font-size: 12px; color: var(--muted); }
+dialog .actions { display: flex; justify-content: flex-end; gap: 8px; }
+#toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--bad); color: #fff; padding: 8px 14px; border-radius: 8px; display: none; z-index: 30; max-width: 80vw; }
+#toast.ok { background: #238636; }
+</style>
+</head>
+<body>
+<header>
+  <span id="status" title="Anslutning"></span>
+  <h1>devctl</h1>
+  <nav class="tabs" id="tabs"></nav>
+  <span class="stats" id="stats"></span>
+  <span class="spacer"></span>
+  <button id="btnLog" title="Uppdatera dagens utvecklingslogg i Obsidian">Dagens logg</button>
+  <button class="orch" id="btnOrch">Orkestrator</button>
+</header>
+<main id="main">
+  <section id="view"></section>
+  <aside id="inspector"></aside>
+</main>
+<dialog id="dlg"><form method="dialog" id="dlgForm"></form></dialog>
+<div id="toast"></div>
+
+<script>
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const store = { get(k, d) { try { return JSON.parse(localStorage.getItem("devctl:" + k)) ?? d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem("devctl:" + k, JSON.stringify(v)); } catch {} } };
+
+let S = { repos: [], sessions: [], servers: [], docker: { containers: [] } };
+// Go skickar null för tomma listor i vissa fall
+const fixLists = j => { for (const k of ["repos", "sessions", "servers"]) j[k] ||= []; j.docker ||= {}; j.docker.containers ||= [];
+  for (const r of j.repos) for (const k of ["worktrees", "branches", "prs"]) r[k] ||= []; return j; };
+let lastKey = "";
+let tab = store.get("tab", "overview");
+let opts = store.get("opts", { inactive: false, apps: false, stopped: false, tmuxView: "map", q: "" });
+const collapsed = new Set();
+let inspect = null; // { kind: "pane", id } | { kind: "text", title, load }
+
+const TABS = [["overview", "Översikt"], ["tmux", "tmux"], ["servers", "Servrar"], ["docker", "Docker"], ["orchestrator", "Orkestrator"]];
+// Flikar går att länka till: http://localhost:7878/#docker
+if (TABS.some(([k]) => k === location.hash.slice(1))) tab = location.hash.slice(1);
+window.addEventListener("hashchange", () => { const h = location.hash.slice(1); if (TABS.some(([k]) => k === h)) { tab = h; render(); } });
+
+async function api(action, data = {}, quiet = false) {
+  const r = await fetch("/api/action", { method: "POST", headers: { "Content-Type": "application/json", "X-Devctl": "1" },
+    body: JSON.stringify({ action, ...data }) });
+  const j = await r.json().catch(() => ({ error: "oväntat svar" }));
+  if (!r.ok) { if (!quiet) toast(j.error || "Fel"); throw new Error(j.error); }
+  setTimeout(refresh, 150);
+  return j.result;
+}
+
+function toast(msg, ok = false) {
+  const t = $("#toast"); t.textContent = msg; t.className = ok ? "ok" : ""; t.style.display = "block";
+  clearTimeout(t._h); t._h = setTimeout(() => t.style.display = "none", 4500);
+}
+
+async function refresh() {
+  try {
+    const j = await (await fetch("/api/state")).json();
+    $("#status").classList.remove("err");
+    const { time, ...rest } = j;
+    const key = JSON.stringify(rest);
+    if (key === lastKey) return;
+    lastKey = key; S = fixLists(j); render();
+  } catch { $("#status").classList.add("err"); }
+}
+
+// ---------- uppslag ----------
+const panes = () => S.sessions.flatMap(s => s.windows.flatMap(w => w.panes.map(p => ({ s, w, p }))));
+const findPane = id => panes().find(x => x.p.id === id);
+const serverByPort = port => S.servers.find(s => s.port === port);
+const hostname = () => S.hostname;
+const short = p => String(p || "").replace(/^\/Users\/[^/]+/, "~");
+const paneLabel = p => { const t = p.title && p.title !== hostname() ? p.title : ""; return t || p.command; };
+
+function render() {
+  const nW = S.repos.reduce((a, r) => a + r.worktrees.filter(w => !w.missing).length, 0);
+  const nP = panes().length, nS = S.servers.filter(s => !s.app).length, nC = S.docker.containers.filter(c => c.state === "running").length;
+  const counts = { overview: S.repos.filter(r => r.active).length, tmux: nP, servers: nS, docker: nC, orchestrator: S.orchestrator ? "●" : "" };
+  $("#tabs").innerHTML = TABS.map(([k, l]) => `<button data-tab="${k}" class="${tab === k ? "on" : ""}">${l}<span class="n">${counts[k] ?? ""}</span></button>`).join("");
+  $("#stats").textContent = `${nW} worktrees · ${nP} panes · ${nS} servrar · ${nC} containrar`;
+  $("#btnOrch").textContent = S.orchestrator ? "Orkestrator ●" : "Starta orkestrator";
+  if (location.hash.slice(1) !== tab) history.replaceState(null, "", "#" + tab);
+  store.set("tab", tab);
+  const v = $("#view");
+  ({ overview: renderOverview, tmux: renderTmux, servers: renderServers, docker: renderDocker, orchestrator: renderOrch }[tab] || renderOverview)(v);
+  renderInspector();
+}
+
+// ---------- chips ----------
+function paneChip(id) {
+  const x = findPane(id); if (!x) return "";
+  const orch = x.w.kind === "global-orchestrator" || x.p.role === "orchestrator";
+  return `<span class="chip pane ${orch ? "orchp" : ""}" data-pane="${esc(id)}" title="${esc(x.s.name)}:${esc(x.w.name)} · ${esc(x.p.title)}">▣ ${esc(id)} ${esc(x.p.command)} <span class="muted">${esc(x.s.name)}:${x.w.index}</span></span>`;
+}
+function serverChip(port) {
+  const s = serverByPort(port); if (!s) return "";
+  return `<span class="chip srv ${esc(s.kind)}" data-open="http://localhost:${port}" title="${esc(s.command)}">:${port} ${esc(s.kind)}</span>`;
+}
+// Många portar från samma program (t.ex. Jupyter-kärnor) blir en chip
+function serverChips(ports) {
+  const groups = {};
+  for (const port of ports) { const s = serverByPort(port); if (s) (groups[s.process + "|" + s.kind] ||= []).push(s); }
+  return Object.values(groups).flatMap(list => {
+    if (list.length <= 3) return list.map(s => serverChip(s.port));
+    const procs = new Set(list.map(s => s.pid)).size;
+    return [`<span class="chip srv ${esc(list[0].kind)}" data-tabgo="servers" title="${esc(list.map(s => ":" + s.port).join(" "))}">${esc(list[0].process)} · ${procs > 1 ? procs + " processer · " : ""}${list.length} portar</span>`];
+  });
+}
+// Containrar från samma compose-/Supabase-projekt blir en chip
+function containerChips(names) {
+  const byProj = {};
+  for (const n of names) { const c = S.docker.containers.find(x => x.name === n); (byProj[c?.project || n] ||= []).push(n); }
+  return Object.entries(byProj).flatMap(([proj, list]) => list.length > 2
+    ? [`<span class="chip ct" data-tabgo="docker" title="${esc(list.join(", "))}">🐳 ${esc(proj)} · ${list.length}</span>`]
+    : list.map(ctChip));
+}
+const ctChip = name => `<span class="chip ct" data-ct="${esc(name)}" title="Visa loggar">🐳 ${esc(name)}</span>`;
+
+// ---------- översikt ----------
+function renderOverview(v) {
+  const q = (opts.q || "").toLowerCase();
+  const repos = S.repos.filter(r => (opts.inactive || r.active) && (!q || r.name.toLowerCase().includes(q) ||
+    r.worktrees.some(w => (w.branch || "").toLowerCase().includes(q)) || r.branches.some(b => b.name.toLowerCase().includes(q))));
+  // Repos med något igång först
+  const busy = r => r.worktrees.reduce((a, w) => a + w.panes.length * 3 + w.servers.length * 2 + w.containers.length + (w.changes ? 1 : 0), 0);
+  repos.sort((a, b) => busy(b) - busy(a) || b.lastUnix - a.lastUnix);
+  const hidden = S.repos.filter(r => !r.active).length;
+  v.innerHTML = `<div class="toolbar">
+      <input type="search" id="q" placeholder="Filtrera repo eller branch…" value="${esc(opts.q || "")}">
+      <label><input type="checkbox" data-opt="inactive" ${opts.inactive ? "checked" : ""}> visa inaktiva repos (${hidden})</label>
+      <span class="spacer"></span><span class="muted small">Ett repo räknas som aktivt om något körs i det, det har ändringar, öppna PR:er eller commits de senaste 3 dagarna.</span>
+    </div>` + (repos.length ? repos.map(repoCard).join("") : `<div class="empty">Inga repos matchar. Repos letas upp i rötterna i konfigurationen och i katalogerna där tmux-panes och servrar körs.</div>`);
+}
+
+function repoCard(r) {
+  const wts = r.worktrees.map(w => wtRow(r, w)).join("");
+  const others = r.branches.filter(b => !b.worktree);
+  return `<div class="card">
+    <div class="chead">
+      <span class="cname">${esc(r.name)}</span>
+      ${r.github ? `<a class="small" href="https://github.com/${esc(r.github)}" target="_blank" rel="noopener">${esc(r.github)} ↗</a>` : `<span class="muted small">ingen GitHub-remote</span>`}
+      ${r.prs.length ? `<a class="badge pr" href="https://github.com/${esc(r.github)}/pulls" target="_blank" rel="noopener">${r.prs.length} öppna PR</a>` : ""}
+      <span class="muted small mono">${esc(short(r.path))}</span>
+      <span class="spacer"></span>
+      <button class="sm" data-act="wtAdd" data-repo="${esc(r.path)}">+ Worktree</button>
+      <button class="sm" data-act="workerNew" data-repo="${esc(r.path)}">+ Worker</button>
+      <button class="sm" data-act="graph" data-repo="${esc(r.path)}">Graf</button>
+    </div>
+    ${wts}
+    ${others.length ? `<details class="branches" ${collapsed.has("b:" + r.path) ? "open" : ""} data-det="b:${esc(r.path)}">
+      <summary>${others.length} branches utan worktree</summary>
+      <div class="blist">${others.map(b => `
+        <span class="mono">${esc(b.name)}</span>
+        <span class="muted">${esc(b.when)}</span>
+        <span>${b.gone ? `<span class="badge bad">remote borta</span>` : b.ahead + b.behind ? `<span class="badge">↑${b.ahead} ↓${b.behind}</span>` : ""}
+          ${b.pr ? `<a class="badge pr" href="${esc(b.pr.url)}" target="_blank" rel="noopener">PR #${b.pr.number}</a>` : ""}</span>
+        <span class="commit">${esc(b.subject)}</span>
+        <span class="acts"><button class="sm" data-act="wtAddBranch" data-repo="${esc(r.path)}" data-branch="${esc(b.name)}">Worktree</button>
+          <button class="sm" data-act="workerBranch" data-repo="${esc(r.path)}" data-branch="${esc(b.name)}">Worker</button></span>`).join("")}
+      </div></details>` : ""}
+  </div>`;
+}
+
+function wtRow(r, w) {
+  const busy = w.panes.length + w.servers.length + w.containers.length > 0;
+  const b = w.branch || `(${w.head})`;
+  const running = [...w.panes.map(paneChip), ...serverChips(w.servers), ...containerChips(w.containers)].join("");
+  return `<div class="wt ${busy ? "busy" : ""} ${w.missing ? "missing" : ""}">
+    <div>
+      <div class="bname">${esc(b)} ${w.main ? `<span class="badge">huvud</span>` : ""} ${w.detached ? `<span class="badge warn">detached</span>` : ""} ${w.missing ? `<span class="badge bad">saknas</span>` : ""}</div>
+      <div class="bpath">${esc(short(w.path))}</div>
+    </div>
+    <div>
+      <div class="row">
+        ${w.changes ? `<span class="badge warn" title="Ocommittade ändringar">±${w.changes}</span>` : `<span class="badge ok">ren</span>`}
+        ${w.ahead || w.behind ? `<span class="badge" title="Mot ${esc(w.upstream)}">↑${w.ahead} ↓${w.behind}</span>` : ""}
+        ${!w.upstream && w.branch && !w.missing ? `<span class="badge" title="Ingen upstream">lokal</span>` : ""}
+        ${w.pr ? `<a class="badge pr" href="${esc(w.pr.url)}" target="_blank" rel="noopener" title="${esc(w.pr.title)}">PR #${w.pr.number}${w.pr.draft ? " utkast" : ""}${w.pr.review === "APPROVED" ? " ✓" : w.pr.review === "CHANGES_REQUESTED" ? " ✗" : ""}</a>` : ""}
+      </div>
+      ${w.last.subject ? `<div class="commit" title="${esc(w.last.hash)} · ${esc(w.last.author)}">${esc(w.last.subject)} · ${esc(w.last.when)}</div>` : ""}
+    </div>
+    <div class="row">${running || `<span class="muted small">inget igång</span>`}</div>
+    <div class="acts">
+      ${w.missing ? "" : `
+      <button class="sm" data-act="worker" data-repo="${esc(r.path)}" data-branch="${esc(w.branch)}" ${w.branch ? "" : "disabled"} title="Starta en Claude-worker i denna worktree">Worker</button>
+      <button class="sm" data-act="term" data-path="${esc(w.path)}" title="Nytt tmux-fönster här">Terminal</button>
+      <button class="sm" data-act="note" data-repo="${esc(r.path)}" data-branch="${esc(w.branch)}" ${w.branch && S.vault ? "" : "disabled"} title="${w.note ? "Öppna anteckningen i Obsidian" : "Skapa anteckning i Obsidian"}">${w.note ? "📝" : "+📝"}</button>
+      <button class="sm" data-act="editor" data-path="${esc(w.path)}" title="Öppna i editorn">⌘</button>`}
+      ${w.main ? "" : `<button class="sm danger" data-act="wtRemove" data-path="${esc(w.path)}" data-changes="${w.changes}" title="Ta bort worktreen (branchen finns kvar)">✕</button>`}
+    </div>
+  </div>`;
+}
+
+// ---------- servrar ----------
+function renderServers(v) {
+  const list = S.servers.filter(s => opts.apps || !s.app);
+  // Processer med många portar (t.ex. Jupyter-kärnor) visas på en rad
+  // Många portar från samma program i samma katalog (t.ex. Jupyter-kärnor) blir en rad
+  const groups = [];
+  const by = {};
+  const key = s => [s.process, s.kind, s.worktree?.path || s.cwd].join("|");
+  for (const s of list) (by[key(s)] ||= []).push(s);
+  for (const s of list) {
+    const g = by[key(s)];
+    if (g.length > 3) { if (g[0] === s) groups.push({ ...s, ports: g.map(x => x.port), pids: new Set(g.map(x => x.pid)).size }); }
+    else groups.push({ ...s, ports: [s.port], pids: 1 });
+  }
+  const hiddenApps = S.servers.filter(s => s.app).length;
+  v.innerHTML = `<div class="toolbar">
+      <label><input type="checkbox" data-opt="apps" ${opts.apps ? "checked" : ""}> visa systemappar (${hiddenApps})</label>
+      <span class="spacer"></span><span class="muted small">Alla processer som lyssnar på en TCP-port, kopplade till worktree via processens katalog och till tmux via processträdet.</span>
+    </div>
+    <div class="card"><table>
+      <tr><th>Port</th><th>Typ</th><th>Process</th><th>Repo / branch</th><th>Startad från</th><th>Kommando</th><th></th></tr>
+      ${groups.map(s => `<tr>
+        <td class="mono">${s.ports.length > 1 ? `${s.ports.length} portar<div class="muted small">${s.ports.slice(0, 4).join(", ")}…</div>` : `<a href="#" data-open="http://localhost:${s.port}">:${s.port}</a>${s.local ? "" : ` <span class="badge warn" title="Lyssnar på alla nätverk: ${esc(s.addrs.join(", "))}">öppen</span>`}`}</td>
+        <td><span class="badge k-${esc(s.kind)}">${esc(s.kind)}</span></td>
+        <td class="mono">${esc(s.process)} <span class="muted small">${s.pids > 1 ? s.pids + " processer" : s.pid}</span></td>
+        <td>${s.worktree ? `<span class="mono">${esc(s.worktree.repo)}</span> <span class="muted">@</span> <span class="mono" style="color:var(--ok)">${esc(s.worktree.branch)}</span>` : `<span class="muted small mono">${esc(short(s.cwd))}</span>`}</td>
+        <td>${s.pane ? paneChip(s.pane) : s.container ? ctChip(s.container) : `<span class="muted small">—</span>`}</td>
+        <td class="cmd" title="${esc(s.command)}">${esc(s.command)}</td>
+        <td class="acts">${s.ports.length === 1 ? `<button class="sm" data-open="http://localhost:${s.port}">Öppna</button>` : ""}
+          ${s.app || s.kind === "docker" || s.pids > 1 ? "" : `<button class="sm danger" data-act="killProc" data-pid="${s.pid}" title="Skicka SIGTERM">Stoppa</button>`}</td>
+      </tr>`).join("")}
+    </table>${groups.length ? "" : `<div class="empty">Inga servrar.</div>`}</div>`;
+}
+
+// ---------- Docker ----------
+function renderDocker(v) {
+  const d = S.docker;
+  const list = d.containers.filter(c => opts.stopped || c.state === "running");
+  const groups = {};
+  for (const c of list) (groups[c.project || "fristående"] ||= []).push(c);
+  const stopped = d.containers.filter(c => c.state !== "running").length;
+  v.innerHTML = `<div class="toolbar">
+      <span class="badge">${esc(d.context || "docker")}</span>
+      <label><input type="checkbox" data-opt="stopped" ${opts.stopped ? "checked" : ""}> visa stoppade (${stopped})</label>
+      ${d.error ? `<span class="badge bad">${esc(d.error)}</span>` : ""}
+    </div>` + (Object.keys(groups).length ? Object.entries(groups).map(([g, cs]) => `
+    <div class="card"><div class="chead"><span class="cname">${esc(g)}</span>
+      <span class="muted small">${cs.filter(c => c.state === "running").length}/${cs.length} igång</span>
+      ${cs[0].worktree ? `<span class="small mono">${esc(cs[0].worktree.repo)} @ <span style="color:var(--ok)">${esc(cs[0].worktree.branch)}</span></span>` : cs[0].dir ? `<span class="muted small mono">${esc(short(cs[0].dir))}</span>` : ""}
+    </div><table>
+      ${cs.map(c => `<tr>
+        <td><span class="dot ${c.state === "running" ? "on" : ""}"></span></td>
+        <td class="mono">${esc(c.service || c.name)}<div class="muted small">${esc(c.name)}</div></td>
+        <td class="cmd" title="${esc(c.image)}">${esc(c.image)}</td>
+        <td class="small">${esc(c.status)}</td>
+        <td>${c.hostPorts.map(p => `<a class="chip" href="#" data-open="http://localhost:${p}">:${p}</a>`).join(" ")}</td>
+        <td class="acts">
+          ${c.state === "running" ? `<button class="sm" data-act="docker" data-op="restart" data-id="${esc(c.id)}">Starta om</button><button class="sm danger" data-act="docker" data-op="stop" data-id="${esc(c.id)}">Stoppa</button>`
+            : `<button class="sm" data-act="docker" data-op="start" data-id="${esc(c.id)}">Starta</button>`}
+          <button class="sm" data-ct="${esc(c.name)}">Loggar</button></td>
+      </tr>`).join("")}
+    </table></div>`).join("") : `<div class="empty">Inga containrar${d.error ? "" : " igång"}.</div>`);
+}
+
+// ---------- tmux ----------
+function windowForest(s) {
+  const kids = {};
+  for (const w of s.windows) (kids[w.parent || ""] ||= []).push(w);
+  const out = [];
+  const walk = (pid, depth) => (kids[pid] || []).forEach(w => { out.push({ w, depth }); walk(w.id, depth + 1); });
+  walk("", 0);
+  return { list: out, kids };
+}
+const B = (act, label, attrs, title, cls = "") => `<button class="sm ${cls}" data-act="${act}" ${attrs} title="${esc(title)}">${label}</button>`;
+const kindBadge = k => k === "global-orchestrator" ? `<span class="badge orch">global orkestrator</span>` : k === "orchestrator" ? `<span class="badge orch">orkestrator</span>` : k ? `<span class="badge orch">${esc(k)}</span>` : "";
+
+function renderTmux(v) {
+  const sessActs = s => `${B("newWindow", "+ Fönster", `data-s="${esc(s.id)}"`, "Nytt fönster")}
+    ${B("orchWin", "+ Orkestratorfönster", `data-s="${esc(s.id)}"`, "Lokalt orkestratorfönster med workers")}
+    ${B("renameSession", "✎", `data-s="${esc(s.id)}"`, "Byt namn")}
+    ${B("attach", "Öppna ↗", `data-s="${esc(s.id)}"`, "Öppna i Terminal")}
+    ${B("kill", "✕", `data-kind="session" data-t="${esc(s.id)}"`, "Stäng session", "danger")}`;
+  const bar = `<div class="toolbar"><span class="seg"><button data-tview="map" class="${opts.tmuxView === "map" ? "on" : ""}">Karta</button><button data-tview="tree" class="${opts.tmuxView === "tree" ? "on" : ""}">Träd</button></span>
+    <button class="primary sm" data-act="newSession">+ Session</button></div>`;
+  if (!S.sessions.length) { v.innerHTML = bar + `<div class="empty">Inga tmux-sessioner körs.</div>`; return; }
+  if (opts.tmuxView === "tree") { v.innerHTML = bar + renderTree(sessActs); return; }
+  v.innerHTML = bar + S.sessions.map(s => `<div class="card">
+    <div class="chead"><span class="cname">${esc(s.name)}</span>${s.attached ? `<span class="badge ok">attached</span>` : ""}<span class="badge">${esc(s.id)}</span><span class="spacer"></span>${sessActs(s)}</div>
+    <div class="windows">${(f => f.list.map(({ w, depth }) => renderWindow(w, depth, s, f.kids)).join(""))(windowForest(s))}</div>
+  </div>`).join("");
+}
+
+function renderWindow(w, depth, s, kids) {
+  const ratio = Math.min(0.75, Math.max(0.3, (w.height * 2) / Math.max(w.width, 1)));
+  const parent = w.parent ? s.windows.find(x => x.id === w.parent) : null;
+  const nk = (kids[w.id] || []).length;
+  const ps = w.panes.map(p => {
+    const L = p.left / w.width * 100, T = p.top / w.height * 100, W = p.width / w.width * 100, H = p.height / w.height * 100;
+    return `<div class="pane ${p.active ? "active" : ""} ${inspect?.id === p.id ? "sel" : ""} role-${esc((p.role || "").split("-")[0])}" data-pane="${esc(p.id)}"
+      style="left:${L}%;top:${T}%;width:calc(${W}% - 2px);height:calc(${H}% - 2px)" title="${esc(p.id)} · ${esc(p.command)} · ${esc(p.path)}">
+      ${p.role ? `<div class="role">${esc(p.role)}</div>` : ""}
+      <div class="pt">${esc(paneLabel(p))}</div>
+      ${p.worktree ? `<div class="br">⎇ ${esc(p.worktree.repo)}@${esc(p.worktree.branch)}</div>` : ""}
+      <div class="pc">${esc(p.id)} · ${esc(p.command)}${p.ports?.length ? " · :" + p.ports.join(" :") : ""}</div>
+    </div>`;
+  }).join("");
+  return `<div class="window ${w.active ? "active" : ""} ${esc(w.kind)} ${depth ? "child" : ""}">
+    ${parent || nk ? `<div class="wrel">${parent ? `↳ under <b>${parent.index}: ${esc(parent.name)}</b>` : ""}${parent && nk ? " · " : ""}${nk ? `${nk} underfönster` : ""}</div>` : ""}
+    <div class="whead">
+      ${w.active ? `<span class="dot blue"></span>` : ""}<span class="muted mono">${w.index}:</span><span class="wname">${esc(w.name)}</span>${kindBadge(w.kind)}
+      <span class="spacer"></span>
+      ${B("newChild", "+↳", `data-w="${esc(w.id)}"`, "Nytt underfönster")}
+      ${B("setParent", "⤷", `data-w="${esc(w.id)}"`, "Flytta under ett annat fönster")}
+      ${B("addPane", "+ Pane", `data-w="${esc(w.id)}"`, "Dela aktiv pane")}
+      <select data-layout="${esc(w.id)}" ${w.panes.length < 2 ? 'disabled title="Layout kräver minst 2 panes"' : 'title="Layout"'} style="width:auto;padding:1px 4px;font-size:11px">
+        <option value="">layout</option><option>tiled</option><option>even-horizontal</option><option>even-vertical</option><option>main-vertical</option><option>main-horizontal</option></select>
+      ${B("renameWindow", "✎", `data-w="${esc(w.id)}"`, "Byt namn")}
+      ${B("focusWindow", "◉", `data-w="${esc(w.id)}"`, "Gör aktivt i tmux")}
+      ${B("kill", "✕", `data-kind="window" data-t="${esc(w.id)}"`, "Stäng fönster", "danger")}
+    </div>
+    <div class="map" style="aspect-ratio:${1 / ratio}">${ps}</div>
+  </div>`;
+}
+
+function renderTree(sessActs) {
+  const tog = id => `<span class="tog" data-tog="${esc(id)}">${collapsed.has(id) ? "▸" : "▾"}</span>`;
+  const node = (w, kids) => `<li><div class="trow">${tog(w.id)}<span>${w.kind.includes("orchestrator") ? "🎛" : w.kind === "worker" ? "⚙" : "▭"}</span>
+      <b>${w.index}: ${esc(w.name)}</b>${kindBadge(w.kind)}
+      <span class="tsub">${w.panes.length} pane${w.panes.length === 1 ? "" : "s"}${(kids[w.id] || []).length ? ` · ${kids[w.id].length} underfönster` : ""}</span>
+      <span class="tacts">${B("newChild", "+ Underfönster", `data-w="${esc(w.id)}"`, "")}${B("addPane", "+ Pane", `data-w="${esc(w.id)}"`, "")}${B("setParent", "⤷ Flytta", `data-w="${esc(w.id)}"`, "")}${B("renameWindow", "✎", `data-w="${esc(w.id)}"`, "Byt namn")}${B("kill", "✕", `data-kind="window" data-t="${esc(w.id)}"`, "Stäng", "danger")}</span></div>
+    ${collapsed.has(w.id) ? "" : `<ul>${w.panes.map(p => `<li><div class="trow ${inspect?.id === p.id ? "sel" : ""}" data-pane="${esc(p.id)}"><span class="tog"></span><span>${p.active ? "▣" : "□"}</span>
+      ${p.role ? `<span class="badge orch">${esc(p.role)}</span>` : ""}<b>${esc(paneLabel(p))}</b>
+      ${p.worktree ? `<span class="badge ok">⎇ ${esc(p.worktree.repo)}@${esc(p.worktree.branch)}</span>` : ""}
+      ${(p.ports || []).map(port => `<span class="badge">:${port}</span>`).join("")}
+      <span class="tsub">${esc(p.id)} · ${esc(p.command)} · ${esc(short(p.path))}</span></div></li>`).join("")}${(kids[w.id] || []).map(c => node(c, kids)).join("")}</ul>`}</li>`;
+  return `<div class="card tree"><ul>${S.sessions.map(s => { const { kids } = windowForest(s); return `<li>
+    <div class="trow">${tog(s.id)}<span>🗂</span><b>${esc(s.name)}</b>${s.attached ? `<span class="badge ok">attached</span>` : ""}<span class="tsub">${s.windows.length} fönster</span><span class="tacts">${sessActs(s)}</span></div>
+    ${collapsed.has(s.id) ? "" : `<ul>${(kids[""] || []).map(w => node(w, kids)).join("")}</ul>`}</li>`; }).join("")}</ul></div>`;
+}
+
+// ---------- orkestrator ----------
+function renderOrch(v) {
+  const o = S.orchestrator;
+  if (!o) {
+    v.innerHTML = `<div class="card" style="padding:24px;max-width:720px">
+      <h2 style="margin-top:0">Global orkestrator</h2>
+      <p>En Claude Code-session i tmux (session <code>devctl</code>) som ser hela läget via <code>devctl</code>: repos och worktrees, panes, servrar och containrar.
+      Den kan skapa worktrees, starta workers på en branch, läsa av och instruera dem, och skriva branch-anteckningar och den dagliga loggen i Obsidian.</p>
+      <p class="muted small">Den startar inga workers, stoppar inga servrar och pushar inget förrän du ber om det.</p>
+      <div class="row"><button class="orch" data-act="orchStart">Starta orkestratorn</button><button data-act="brief">Visa instruktionerna</button></div></div>`;
+    return;
+  }
+  const workers = panes().filter(x => x.w.kind === "worker" || (x.p.role || "").startsWith("worker"));
+  if ($("#orchChat") && $("#orchChat").dataset.pane === o.pane) { renderWorkers(workers); return; }
+  v.innerHTML = `<div class="orchgrid">
+    <div class="card chat" id="orchChat" data-pane="${esc(o.pane)}" style="padding:12px">
+      <div class="row"><b class="mono">Orkestrator</b><span class="muted small mono">${esc(o.session)} · ${esc(o.pane)}</span><span class="spacer"></span>
+        <button class="sm" data-act="brief">Instruktioner</button><button class="sm" data-act="attachOrch">Öppna i Terminal</button></div>
+      <pre class="term" id="orchOut">…</pre>
+      <div class="row">
+        <button class="sm" data-okey="Escape">Esc</button><button class="sm" data-okey="C-c">Ctrl-C</button><button class="sm" data-okey="Enter">Enter</button>
+        <button class="sm" data-okey="Up">↑</button><button class="sm" data-okey="Down">↓</button><button class="sm" data-okey="BTab" title="Shift+Tab: byt läge">⇧Tab</button>
+        <span class="muted small">Enter skickar · Shift+Enter ny rad</span>
+      </div>
+      <div class="row" style="flex-wrap:nowrap"><textarea id="orchIn" rows="3" placeholder="Skriv till orkestratorn, t.ex. ”Starta en worker i Dentio på feat/x som fixar …”"></textarea><button class="orch" id="orchSend">Skicka</button></div>
+    </div>
+    <div><div class="card"><div class="chead"><b>Workers</b><span class="spacer"></span><button class="sm" data-act="workerNew">+ Worker</button></div><div id="workers"></div></div>
+      <div class="muted small" style="padding:0 4px">Workers är Claude-sessioner i egna worktrees. Klicka för att se vad de gör.</div></div>
+  </div>`;
+  renderWorkers(workers);
+  loadOrch(true);
+}
+
+function renderWorkers(workers) {
+  const el = $("#workers"); if (!el) return;
+  el.innerHTML = workers.length ? workers.map(({ s, w, p }) => `<div class="worker" data-pane="${esc(p.id)}">
+    <div class="mono small"><b>${esc(w.name)}</b> <span class="muted">${esc(p.id)}</span></div>
+    <div class="small">${esc(paneLabel(p))}</div>
+    ${p.worktree ? `<div class="small" style="color:var(--ok)">⎇ ${esc(p.worktree.repo)}@${esc(p.worktree.branch)}</div>` : ""}
+  </div>`).join("") : `<div class="muted small" style="padding:12px">Inga workers än.</div>`;
+}
+
+async function loadOrch(scroll) {
+  const pre = $("#orchOut"); if (!pre || !S.orchestrator) return;
+  try {
+    const r = await api("capture", { pane: S.orchestrator.pane, lines: 400 }, true);
+    setTerm(pre, r.text, scroll);
+  } catch {}
+}
+function setTerm(pre, text, scroll) {
+  const atBottom = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 30;
+  // TUI:er ritar hela skärmen: ta bort tomrum och korta av avgränsningslinjer så att det blir läsbart
+  const t = String(text).split("\n").map(l => l.replace(/\s+$/, "")).map(l => /^[─━═\-]{20,}$/.test(l) ? "─".repeat(48) : l)
+    .join("\n").replace(/\n{3,}/g, "\n\n").replace(/^\n+/, "").replace(/\s+$/, "");
+  if (pre.textContent !== t) { pre.textContent = t; if (scroll || atBottom) pre.scrollTop = pre.scrollHeight; }
+}
+
+// ---------- inspektör ----------
+function openInspect(x) { inspect = x; delete $("#inspector").dataset.key; render(); }
+function closeInspect() { inspect = null; render(); }
+
+function renderInspector() {
+  const el = $("#inspector"), main = $("#main");
+  main.classList.toggle("inspecting", !!inspect);
+  if (!inspect) { el.innerHTML = ""; delete el.dataset.key; return; }
+  if (inspect.kind === "text") {
+    if (el.dataset.key === inspect.title) return;
+    el.dataset.key = inspect.title;
+    el.innerHTML = `<div class="row"><h2>${esc(inspect.title)}</h2><button class="sm" id="iReload">↻</button><button class="sm" id="iClose">✕</button></div><pre class="term" id="iText">Laddar…</pre>`;
+    loadText();
+    return;
+  }
+  const f = findPane(inspect.id);
+  if (!f) { inspect = null; main.classList.remove("inspecting"); el.innerHTML = ""; return; }
+  const { s, w, p } = f;
+  const meta = `${esc(s.name)} › ${w.index}:${esc(w.name)} › ${esc(p.id)}${p.role ? " (" + esc(p.role) + ")" : ""}<br>${esc(p.command)} · ${p.width}×${p.height}${p.ports?.length ? " · :" + p.ports.join(" :") : ""}<br>${esc(short(p.path))}${p.worktree ? `<br><span style="color:var(--ok)">⎇ ${esc(p.worktree.repo)}@${esc(p.worktree.branch)}</span>` : ""}`;
+  if (el.dataset.key === p.id) { $("#iTitle").textContent = paneLabel(p); $("#iMeta").innerHTML = meta; return; }
+  el.dataset.key = p.id;
+  el.innerHTML = `<div class="row"><h2 id="iTitle">${esc(paneLabel(p))}</h2><button class="sm" id="iClose">✕</button></div>
+    <div class="meta" id="iMeta">${meta}</div>
+    <div class="row">
+      <button class="sm" data-pact="split" data-dir="h">Dela →</button><button class="sm" data-pact="split" data-dir="v">Dela ↓</button>
+      <button class="sm" data-pact="zoom">Zoom</button><button class="sm" data-pact="focus">Fokusera</button><button class="sm" data-pact="title">✎ Titel</button>
+      <button class="sm danger" data-act="kill" data-kind="pane" data-t="${esc(p.id)}">Stäng</button>
+    </div>
+    <pre class="term" id="iPre">…</pre>
+    <div class="row"><button class="sm" data-key="Escape">Esc</button><button class="sm" data-key="C-c">Ctrl-C</button><button class="sm" data-key="Enter">Enter</button><button class="sm" data-key="Up">↑</button><button class="sm" data-key="Tab">Tab</button>
+      <label class="muted small" style="margin-left:auto;display:flex;gap:4px;align-items:center"><input type="checkbox" id="iEnter" checked> skicka Enter</label></div>
+    <div class="row" style="flex-wrap:nowrap"><textarea id="iIn" rows="2" placeholder="Text till panen (⌘/Ctrl+Enter skickar)"></textarea><button class="primary" id="iSend">Skicka</button></div>`;
+  loadPane(true);
+}
+
+async function loadPane(scroll) {
+  if (inspect?.kind !== "pane") return;
+  const pre = $("#iPre"); if (!pre) return;
+  try { const r = await api("capture", { pane: inspect.id, lines: 300 }, true); setTerm(pre, r.text, scroll); } catch {}
+}
+async function loadText() {
+  const pre = $("#iText"); if (!pre || inspect?.kind !== "text") return;
+  try { pre.textContent = await inspect.load(); } catch (e) { pre.textContent = e.message; }
+}
+
+// ---------- formulär ----------
+function form(title, fields, submit, onSubmit, hint = "") {
+  const f = $("#dlgForm");
+  f.innerHTML = `<h3>${esc(title)}</h3>${hint ? `<div class="hint">${hint}</div>` : ""}` + fields.map(x => `<label>${esc(x.label)}
+    ${x.type === "select" ? `<select name="${x.key}">${x.options.map(o => `<option value="${esc(o[0])}" ${o[0] === x.value ? "selected" : ""}>${esc(o[1])}</option>`).join("")}</select>`
+      : x.type === "textarea" ? `<textarea name="${x.key}" rows="${x.rows || 4}" placeholder="${esc(x.ph || "")}">${esc(x.value || "")}</textarea>`
+      : `<input name="${x.key}" type="${x.type || "text"}" value="${esc(x.value ?? "")}" placeholder="${esc(x.ph || "")}" ${x.list ? `list="${x.key}-list"` : ""}>
+         ${x.list ? `<datalist id="${x.key}-list">${x.list.map(o => `<option value="${esc(o)}">`).join("")}</datalist>` : ""}`}</label>`).join("") +
+    `<div class="actions"><button value="cancel" formnovalidate>Avbryt</button><button class="primary" value="ok">${esc(submit)}</button></div>`;
+  const dlg = $("#dlg");
+  dlg.onclose = async () => { if (dlg.returnValue === "ok") { try { await onSubmit(Object.fromEntries(new FormData(f))); } catch {} } };
+  dlg.returnValue = ""; dlg.showModal();
+  const first = f.querySelector("input:not([type=checkbox]),textarea"); if (first) { first.focus(); first.select?.(); }
+}
+
+const repoOf = path => S.repos.find(r => r.path === path);
+const repoOptions = () => S.repos.filter(r => r.active).map(r => [r.path, r.name]);
+
+function workerForm(repoPath, branch) {
+  const r = repoPath && repoOf(repoPath);
+  form("Starta worker", [
+    { key: "repo", label: "Repo", type: "select", options: repoOptions().length ? repoOptions() : S.repos.map(r => [r.path, r.name]), value: repoPath },
+    { key: "branch", label: "Branch (ny eller befintlig)", value: branch || "", ph: "t.ex. feat/booking-sms", list: r ? r.branches.map(b => b.name) : [] },
+    { key: "base", label: "Bas för ny branch", value: r?.default || "", ph: "main" },
+    { key: "task", label: "Uppgift till Claude (valfri)", type: "textarea", ph: "Vad ska workern göra?" },
+  ], "Starta", async d => {
+    const res = await api("worker_start", d);
+    toast(`Worker startad i ${res.repo}@${res.branch}`, true);
+    openInspect({ kind: "pane", id: res.pane });
+  }, "Skapar en worktree för branchen om den saknas och startar Claude i ett eget tmux-fönster" + (S.orchestrator ? " under orkestratorn." : "."));
+}
+
+// ---------- händelser ----------
+document.addEventListener("click", async e => {
+  const t = e.target;
+  const tb = t.closest("[data-tab]"); if (tb) { tab = tb.dataset.tab; store.set("tab", tab); lastKey = ""; return render(); }
+  const tgo = t.closest("[data-tabgo]"); if (tgo) { tab = tgo.dataset.tabgo; store.set("tab", tab); return render(); }
+  const tv = t.closest("[data-tview]"); if (tv) { opts.tmuxView = tv.dataset.tview; store.set("opts", opts); return render(); }
+  const tg = t.closest("[data-tog]"); if (tg) { const id = tg.dataset.tog; collapsed.has(id) ? collapsed.delete(id) : collapsed.add(id); return render(); }
+  if (t.id === "iClose") return closeInspect();
+  if (t.id === "iReload") return loadText();
+  if (t.id === "iSend") return sendInspect();
+  if (t.id === "orchSend") return sendOrch();
+  const op = t.closest("[data-open]"); if (op) { e.preventDefault(); return api("open_url", { url: op.dataset.open }); }
+  const k = t.closest("[data-key]"); if (k && inspect?.kind === "pane") return api("keys", { pane: inspect.id, keys: k.dataset.key });
+  const ok = t.closest("[data-okey]"); if (ok && S.orchestrator) { await api("keys", { pane: S.orchestrator.pane, keys: ok.dataset.okey }); return setTimeout(() => loadOrch(true), 300); }
+  const pa = t.closest("[data-pact]");
+  if (pa && inspect?.kind === "pane") {
+    const id = inspect.id, a = pa.dataset.pact;
+    if (a === "split") return api("split", { pane: id, direction: pa.dataset.dir });
+    if (a === "zoom") return api("zoom", { pane: id });
+    if (a === "focus") return api("select", { pane: id });
+    if (a === "title") return form("Pane-titel", [{ key: "title", label: "Titel", value: findPane(id)?.p.title || "" }], "Spara", d => api("title_pane", { pane: id, ...d }));
+  }
+  const ct = t.closest("[data-ct]");
+  if (ct) { const name = ct.dataset.ct; return openInspect({ kind: "text", title: `🐳 ${name}`, load: async () => (await api("docker_logs", { id: name, lines: 300 }, true)).text }); }
+  const b = t.closest("button[data-act]");
+  const pe = !b && t.closest("[data-pane]");
+  if (pe) { return openInspect({ kind: "pane", id: pe.dataset.pane }); }
+  if (!b) return;
+  const a = b.dataset.act, d = b.dataset;
+  const sess = d.s && S.sessions.find(s => s.id === d.s);
+  const win = d.w && S.sessions.flatMap(s => s.windows).find(w => w.id === d.w);
+  const winSess = d.w && S.sessions.find(s => s.windows.some(w => w.id === d.w));
+  const confirm2 = () => {
+    if (b.classList.contains("armed")) return true;
+    b.classList.add("armed"); b.dataset.orig = b.textContent; b.textContent = "Säker?";
+    setTimeout(() => { b.classList.remove("armed"); b.textContent = b.dataset.orig; }, 2500);
+    return false;
+  };
+  switch (a) {
+    case "worker": return workerForm(d.repo, d.branch);
+    case "workerBranch": return workerForm(d.repo, d.branch);
+    case "workerNew": return workerForm(d.repo || repoOptions()[0]?.[0]);
+    case "wtAdd": { const r = repoOf(d.repo); return form(`Ny worktree i ${r.name}`, [
+      { key: "branch", label: "Branch (ny eller befintlig)", ph: "feat/…", list: r.branches.filter(b => !b.worktree).map(b => b.name) },
+      { key: "base", label: "Bas för ny branch", value: r.default },
+      { key: "path", label: "Sökväg (valfri)", ph: `${short(r.path)}.worktrees/<branch>` },
+    ], "Skapa", async x => { const res = await api("worktree_add", { repo: d.repo, ...x }); toast(`Worktree: ${short(res.path)}`, true); }); }
+    case "wtAddBranch": { const res = await api("worktree_add", { repo: d.repo, branch: d.branch }); return toast(`Worktree: ${short(res.path)}`, true); }
+    case "wtRemove": if (!confirm2()) return;
+      return api("worktree_remove", { path: d.path, force: d.changes > 0 && b.dataset.forced === "1" }).catch(() => { if (d.changes > 0) { b.dataset.forced = "1"; toast(`Worktreen har ${d.changes} ocommittade ändringar. Klicka ✕ två gånger till för att ta bort ändå.`); } });
+    case "graph": { const r = repoOf(d.repo); return openInspect({ kind: "text", title: `⎇ ${r.name}`, load: async () => (await api("graph", { repo: d.repo, lines: 120 }, true)).text }); }
+    case "term": { const res = await api("open_worktree", { path: d.path }); return openInspect({ kind: "pane", id: res.pane }); }
+    case "note": { const res = await api("note", { repo: d.repo, branch: d.branch, open: true }); return toast(res.created ? "Anteckning skapad i Obsidian" : "Öppnar anteckningen i Obsidian", true); }
+    case "editor": return api("editor", { path: d.path });
+    case "killProc": if (!confirm2()) return; return api("kill_process", { pid: +d.pid });
+    case "docker": if (d.op === "stop" && !confirm2()) return; b.disabled = true; return api("docker", { op: d.op, id: d.id }).finally(() => b.disabled = false);
+    case "orchStart": { const o = await api("orchestrator_start"); tab = "orchestrator"; store.set("tab", tab); return; }
+    case "attachOrch": return api("attach", { session: S.orchestrator.session });
+    case "brief": return openInspect({ kind: "text", title: "Orkestratorns instruktioner", load: async () => (await api("brief", {}, true)).text });
+    // tmux
+    case "newSession": return form("Ny session", [{ key: "name", label: "Namn" }, { key: "window", label: "Första fönstret (valfritt)" },
+      { key: "cwd", label: "Katalog", value: "~/Desktop" }, { key: "command", label: "Startkommando (valfritt)", ph: "claude" }], "Skapa", x => api("new_session", x));
+    case "newWindow": return form(`Nytt fönster i ${sess.name}`, [{ key: "name", label: "Namn" }, { key: "cwd", label: "Katalog", value: "~/Desktop" },
+      { key: "command", label: "Startkommando (valfritt)" }], "Skapa", x => api("new_window", { ...x, session: d.s }));
+    case "newChild": return form(`Underfönster till ${win.name}`, [{ key: "name", label: "Namn" }, { key: "cwd", label: "Katalog", value: win.panes[0]?.path || "~" },
+      { key: "command", label: "Startkommando (valfritt)" }], "Skapa", x => api("new_window", { ...x, session: winSess.id, parent: d.w }));
+    case "setParent": {
+      const { kids } = windowForest(winSess); const bad = new Set([d.w]);
+      const mark = id => (kids[id] || []).forEach(c => { bad.add(c.id); mark(c.id); }); mark(d.w);
+      return form(`Flytta "${win.name}" under…`, [{ key: "parent", label: "Förälder", type: "select", value: win.parent,
+        options: [["", "— rotnivå —"], ...winSess.windows.filter(x => !bad.has(x.id)).map(x => [x.id, `${x.index}: ${x.name}`])] }], "Flytta", x => api("set_parent", { window: d.w, ...x }));
+    }
+    case "addPane": { const p = win.panes.find(x => x.active) || win.panes[0]; return api("split", { pane: p.id, direction: p.width / 2 >= p.height * 2 ? "h" : "v" }); }
+    case "renameSession": return form("Byt namn på session", [{ key: "name", label: "Namn", value: sess.name }], "Spara", x => api("rename_session", { session: d.s, ...x }));
+    case "renameWindow": return form("Byt namn på fönster", [{ key: "name", label: "Namn", value: win.name }], "Spara", x => api("rename_window", { window: d.w, ...x }));
+    case "focusWindow": return api("select", { window: d.w });
+    case "attach": return api("attach", { session: d.s });
+    case "kill": if (!confirm2()) return; return api("kill", { kind: d.kind, target: d.t });
+    case "orchWin": return form("Lokalt orkestratorfönster", [
+      { key: "name", label: "Fönsternamn", value: "orchestrator" }, { key: "cwd", label: "Katalog", value: "~/Desktop" },
+      { key: "workers", label: "Antal workers (0–8)", type: "number", value: 3 },
+      { key: "worker_mode", label: "Workers som", type: "select", value: "panes", options: [["panes", "Panes i fönstret"], ["windows", "Egna underfönster"]] },
+      { key: "goal", label: "Mål (valfritt)", type: "textarea", rows: 3 }], "Skapa", x => api("orchestrator_window", { ...x, session: d.s }));
+  }
+});
+
+document.addEventListener("change", e => {
+  const o = e.target.closest("[data-opt]"); if (o) { opts[o.dataset.opt] = o.checked; store.set("opts", opts); return render(); }
+  const l = e.target.closest("[data-layout]"); if (l && l.value) { api("layout", { window: l.dataset.layout, layout: l.value }); l.value = ""; }
+});
+document.addEventListener("toggle", e => { const d = e.target.closest?.("[data-det]"); if (d) d.open ? collapsed.add(d.dataset.det) : collapsed.delete(d.dataset.det); }, true);
+document.addEventListener("input", e => { if (e.target.id === "q") { opts.q = e.target.value; store.set("opts", opts); const pos = e.target.selectionStart; render(); const q = $("#q"); q.focus(); q.setSelectionRange(pos, pos); } });
+document.addEventListener("keydown", e => {
+  if (e.target.id === "iIn" && e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); sendInspect(); }
+  if (e.target.id === "orchIn" && e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendOrch(); }
+  if (e.key === "Escape" && inspect && !$("#dlg").open && !["iIn", "orchIn"].includes(e.target.id)) closeInspect();
+});
+
+async function sendInspect() {
+  const i = $("#iIn"); if (!i || inspect?.kind !== "pane") return;
+  await api("send", { pane: inspect.id, text: i.value, enter: $("#iEnter").checked });
+  i.value = ""; setTimeout(() => loadPane(true), 300);
+}
+async function sendOrch() {
+  const i = $("#orchIn"); if (!i || !S.orchestrator || !i.value.trim()) return;
+  const text = i.value; i.value = "";
+  await api("send", { pane: S.orchestrator.pane, text, enter: true });
+  setTimeout(() => loadOrch(true), 400);
+}
+
+$("#btnOrch").onclick = async () => {
+  if (!S.orchestrator) await api("orchestrator_start");
+  tab = "orchestrator"; store.set("tab", tab); render();
+};
+$("#btnLog").onclick = async () => { const r = await api("daily_log", { open: true }); toast("Dagens logg uppdaterad i Obsidian", true); };
+
+render();
+refresh();
+setInterval(refresh, 2000);
+setInterval(() => { loadPane(false); loadOrch(false); }, 1200);
+</script>
+</body>
+</html>
