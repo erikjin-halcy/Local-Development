@@ -143,6 +143,23 @@ actions:
 Actions som ser riskabla ut (deploy, migrering, reset, push …) frågar först. De körs i ett eget
 tmux-fönster i worktreen. Från terminalen: `devctl actions <repo>` och `devctl run <repo> <action> [--branch b] [--yes]`.
 
+## Claude-kontext per repo
+
+Varje repo du jobbar med har en mapp `Claude/` i sin Obsidian-mapp (`<projectDir>/<repo>/Claude/`):
+
+- **`CLAUDE.md`**: dina personliga instruktioner för repot. devctl lägger en `CLAUDE.local.md` i varje
+  worktree som importerar filen, så Claude Code läser in den i alla repots worktrees. `CLAUDE.local.md`
+  står i `.git/info/exclude` och committas aldrig. Första gången i ett repo frågar Claude Code en gång
+  om importen får läsas in. Har repot en `AGENTS.md` men ingen `CLAUDE.md` importeras även den, eftersom
+  Claude annars slutar läsa `AGENTS.md`.
+- **`Sessioner/`**: en sammanfattning per Claude-session i repot: uppdraget, senaste önskemål, ändrade
+  filer, senaste svaret och kommandot för att fortsätta (`claude --resume`). En session hör till repot
+  den startades i, eller annars det repo där den ändrat flest filer. Sammanfattningen uppdateras högst
+  en gång i timmen och bara medan sessionen är aktiv (dess logg har ändrats den senaste timmen).
+
+Importen går via `~/.config/devctl/context/<repo>`, en länk utan mellanslag till valvets mapp, eftersom
+Claude Codes `@`-import inte klarar mellanslag i sökvägar.
+
 ## Var allt ligger
 
 | Vad | Var | På GitHub? |
@@ -154,7 +171,8 @@ tmux-fönster i worktreen. Från terminalen: `devctl actions <repo>` och `devctl
 | Egna actions | `~/.config/devctl/actions/<repo>.yaml` | nej |
 | Arkiverade repos | `~/.config/devctl/archive.json` | nej |
 | Loggar, pid, orkestratorns instruktioner | `~/.cache/devctl/` | nej |
-| Branch-anteckningar och dagliga loggar | Obsidian-valvet i `obsidian.vault` | nej |
+| Repo-mappar, branch-anteckningar, Claude-kontext, dagliga loggar | Obsidian-valvet i `obsidian.vault` | nej |
+| Personlig `CLAUDE.local.md` i varje worktree | worktreen (utesluten via `.git/info/exclude`) | nej |
 
 Inget av ditt eget sparas i repot, så samma kod fungerar för alla.
 

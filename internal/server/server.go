@@ -52,6 +52,10 @@ func Run(cfg config.Config) error {
 				if _, err := ctl.SyncRepoNotes(); err != nil {
 					log.Println("repo-anteckningar:", err)
 				}
+				// Aktiva Claude-sessioner: kontexten skrivs högst en gång i timmen per session
+				if _, err := ctl.SyncSessions(); err != nil {
+					log.Println("claude-sessioner:", err)
+				}
 				time.Sleep(10 * time.Minute)
 			}
 		}()

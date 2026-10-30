@@ -93,6 +93,11 @@ func (c *Controller) worktreeAdd(a Args) (any, error) {
 		return nil, fmt.Errorf("git %s: %v %s", strings.Join(args, " "), err, out)
 	}
 	c.col.AddDir(path)
+	if c.cfg.Obsidian.Vault != "" {
+		nr := *r
+		nr.Worktrees = []state.Worktree{{Path: path, Branch: branch}}
+		_ = c.ensureClaudeContext(nr)
+	}
 	return map[string]any{"path": path, "branch": branch, "created": true, "repo": r.Name}, nil
 }
 
@@ -775,6 +780,9 @@ func (c *Controller) SyncRepoNotes() (int, error) {
 		if !r.Active || (r.Archived && !r.Busy) {
 			continue
 		}
+		if err := c.ensureClaudeContext(r); err != nil {
+			return n, fmt.Errorf("%s: %w", r.Name, err)
+		}
 		changed, err := c.writeRepoNote(r)
 		if err != nil {
 			return n, err
@@ -817,6 +825,13 @@ func repoSection(cfg config.Config, r state.Repo) string {
 			line += " · senaste commit " + time.Unix(wt.Last.Unix, 0).Format("2006-01-02")
 		}
 		b.WriteString(line + "\n")
+	}
+	if d := claudeDir(cfg, r.Name); d != "" {
+		b.WriteString("\n## Claude\n- [[" + r.Name + "/Claude/CLAUDE|Personliga instruktioner (CLAUDE.md)]]: läses in av Claude Code i repots worktrees\n")
+		for _, f := range recentSessions(cfg, r.Name, 5) {
+			name := strings.TrimSuffix(filepath.Base(f), ".md")
+			b.WriteString("- [[" + name + "]]\n")
+		}
 	}
 	if len(r.PRs) > 0 {
 		b.WriteString("\n## Öppna PR:er\n")

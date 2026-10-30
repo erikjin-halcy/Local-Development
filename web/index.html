@@ -226,6 +226,7 @@ dialog#help { width: min(860px, 94vw); max-height: 88vh; }
   <dt class="mono small muted">~/Desktop/…</dt><dd>Var repot ligger.</dd>
   <dt><button class="sm">+ Ny branch</button></dt><dd>Checkar ut en ny eller befintlig branch i en egen katalog bredvid repot (<span class="mono">repo.worktrees/branch</span>), så att du kan jobba på flera branches samtidigt. Välj om Claude ska starta där med en uppgift.</dd>
   <dt><button class="sm">Obsidian</button></dt><dd>Öppnar repots startsida i Obsidian. Varje repo du jobbar med har en egen mapp i valvet (<span class="mono">Projekt/&lt;repo&gt;/</span>) med startsidan och branch-anteckningarna. Länkar, branches och PR:er på startsidan uppdateras automatiskt; resten skriver du själv.</dd>
+  <dt>Claude-kontext</dt><dd>Varje repo har en mapp <span class="mono">Claude/</span> i sin Obsidian-mapp: <span class="mono">CLAUDE.md</span> med dina personliga instruktioner för repot, som Claude Code läser in i alla repots worktrees, och <span class="mono">Sessioner/</span> med en sammanfattning per Claude-session (uppdraget, senaste önskemål, ändrade filer, senaste svaret, hur du fortsätter). Sammanfattningen uppdateras högst en gång i timmen och bara medan sessionen är aktiv.</dd>
   <dt><button class="sm">Graf</button></dt><dd>Commitgrafen över alla branches, i panelen till höger.</dd>
   <dt><button class="sm">Arkivera</button></dt><dd>Gömmer repot från Aktiva/Inaktiva och från <span class="mono">devctl status</span>. Inget i repot ändras. <b>Återställ</b> tar tillbaka det.</dd>
 </dl>
