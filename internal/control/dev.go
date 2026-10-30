@@ -1,6 +1,7 @@
 package control
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -276,7 +277,54 @@ func (c *Controller) openURL(a Args) (any, error) {
 
 // ---------- Obsidian ----------
 
-func obsidianURI(path string) string { return "obsidian://open?path=" + url.QueryEscape(path) }
+// obsidianURI kodar mellanslag som %20; Obsidian tolkar inte "+" som mellanslag.
+func obsidianURI(path string) string {
+	return "obsidian://open?path=" + strings.ReplaceAll(url.QueryEscape(path), "+", "%20")
+}
+
+// obsidianVaults är valven Obsidian känner till (de som öppnats i programmet någon gång).
+func obsidianVaults() []string {
+	b, err := os.ReadFile(config.Home("~/Library/Application Support/obsidian/obsidian.json"))
+	if err != nil {
+		return nil
+	}
+	var f struct {
+		Vaults map[string]struct {
+			Path string `json:"path"`
+		} `json:"vaults"`
+	}
+	if json.Unmarshal(b, &f) != nil {
+		return nil
+	}
+	var out []string
+	for _, v := range f.Vaults {
+		out = append(out, v.Path)
+	}
+	return out
+}
+
+// openInObsidian öppnar en fil i Obsidian. Obsidian kan bara öppna filer i valv som redan öppnats
+// i programmet, så annars förklaras hur valvet läggs till.
+func openInObsidian(path string) error {
+	known := false
+	for _, v := range obsidianVaults() {
+		if strings.HasPrefix(path, v+"/") {
+			known = true
+		}
+	}
+	if !known {
+		vault := filepath.Base(config.Home("~"))
+		for d := filepath.Dir(path); d != "/" && d != "."; d = filepath.Dir(d) {
+			if _, err := os.Stat(filepath.Join(d, ".obsidian")); err == nil {
+				vault = d
+				break
+			}
+		}
+		return fmt.Errorf("filen är sparad, men valvet %q är inte öppnat i Obsidian än. Öppna Obsidian → Öppna annat valv → Öppna mapp som valv och välj %s (en gång), så fungerar knappen sedan", filepath.Base(vault), vault)
+	}
+	_, err := sysx.Run(10*time.Second, "open", obsidianURI(path))
+	return err
+}
 
 // Note skapar branchens anteckning om den saknas och returnerar sökvägen.
 func (c *Controller) Note(repo, branch string) (string, bool, error) {
@@ -340,10 +388,11 @@ func (c *Controller) note(a Args) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	res := map[string]any{"path": path, "created": created, "uri": obsidianURI(path)}
 	if a.B("open", false) {
-		_, _ = sysx.Run(10*time.Second, "open", obsidianURI(path))
+		return res, openInObsidian(path)
 	}
-	return map[string]any{"path": path, "created": created, "uri": obsidianURI(path)}, nil
+	return res, nil
 }
 
 const logStart, logEnd = "<!-- devctl:start -->", "<!-- devctl:end -->"
@@ -492,7 +541,7 @@ func logSection(cfg config.Config, snap state.Snapshot, now time.Time) string {
 func (c *Controller) dailyLog(a Args) (any, error) {
 	path, err := c.DailyLog()
 	if err == nil && a.B("open", false) {
-		_, _ = sysx.Run(10*time.Second, "open", obsidianURI(path))
+		err = openInObsidian(path)
 	}
 	return map[string]string{"path": path, "uri": obsidianURI(path)}, err
 }

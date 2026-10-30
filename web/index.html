@@ -281,7 +281,7 @@ async function api(action, data = {}, quiet = false) {
 
 function toast(msg, ok = false) {
   const t = $("#toast"); t.textContent = msg; t.className = ok ? "ok" : ""; t.style.display = "block";
-  clearTimeout(t._h); t._h = setTimeout(() => t.style.display = "none", 4500);
+  clearTimeout(t._h); t._h = setTimeout(() => t.style.display = "none", Math.max(4500, msg.length * 60));
 }
 
 let serverStarted = 0;
