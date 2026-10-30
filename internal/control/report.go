@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/erikjin-halcy/Local-Development/internal/config"
+	"github.com/erikjin-halcy/Local-Development/internal/state"
 )
 
 var paneIDRe = regexp.MustCompile(`^%\d+$`)
@@ -51,10 +52,10 @@ func ReportDir(cfg config.Config, repo string) string {
 	if d := cfg.Obsidian.SessionReports[repo]; d != "" {
 		return config.Home(d)
 	}
-	if cfg.Obsidian.Vault == "" {
-		return filepath.Join(config.Dir(), "reports", repo)
+	if d := state.RepoDir(cfg, repo); d != "" {
+		return filepath.Join(d, "Claude", "Sessioner")
 	}
-	return filepath.Join(cfg.Obsidian.Vault, cfg.Obsidian.ProjectDir, repo, "Claude", "Sessioner")
+	return filepath.Join(config.Dir(), "reports", repo)
 }
 
 // report skriver ett utkast till sessionsrapport för en pane: frontmatter, git-läge och sessionens

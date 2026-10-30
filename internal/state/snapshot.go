@@ -502,6 +502,9 @@ func NotePath(cfg config.Config, repo, branch string) string {
 
 // RepoDir är repots mapp i valvet ("" om inget valv är valt).
 func RepoDir(cfg config.Config, repo string) string {
+	if d := cfg.Obsidian.RepoDirs[repo]; d != "" {
+		return config.Home(d)
+	}
 	if cfg.Obsidian.Vault == "" {
 		return ""
 	}

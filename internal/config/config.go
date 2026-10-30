@@ -16,8 +16,10 @@ type Obsidian struct {
 	LogDir     string `json:"logDir"`
 	// Valv som orkestratorn får läsa som kontext
 	ReadVaults []string `json:"readVaults"`
-	// Mapp för sessionsrapporter per repo när de inte ska ligga i arbetsvalvet (t.ex. repon vars
-	// material inte får synkas). Standard: <vault>/<projectDir>/<repo>/Claude/Sessioner.
+	// Repomapp per repo utanför arbetsvalvet (för repon vars material inte får synkas): repo-sidan,
+	// Branches/, Claude/ och sessionsrapporterna hamnar där. Standard: <vault>/<projectDir>/<repo>.
+	RepoDirs map[string]string `json:"repoDirs,omitempty"`
+	// Mapp för sessionsrapporter per repo. Standard: <repomappen>/Claude/Sessioner.
 	SessionReports map[string]string `json:"sessionReports,omitempty"`
 }
 
