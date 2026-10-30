@@ -320,7 +320,12 @@ func openInObsidian(path string) error {
 				break
 			}
 		}
-		return fmt.Errorf("filen är sparad, men valvet %q är inte öppnat i Obsidian än. Öppna Obsidian → Öppna annat valv → Öppna mapp som valv och välj %s (en gång), så fungerar knappen sedan", filepath.Base(vault), vault)
+		where := vault
+		// iCloud-valv ligger i den dolda mappen Library; i Finder heter platsen iCloud Drive › Obsidian
+		if strings.Contains(vault, "/Library/Mobile Documents/iCloud~md~obsidian/Documents/") {
+			where = "iCloud Drive › Obsidian › " + filepath.Base(vault)
+		}
+		return fmt.Errorf("filen är sparad, men valvet %q är inte öppnat i Obsidian än. Gör så här en gång: Obsidian → valvikonen nere till vänster → Open another vault → Open folder as vault → välj %s (eller tryck ⌘⇧G och klistra in %s)", filepath.Base(vault), where, vault)
 	}
 	_, err := sysx.Run(10*time.Second, "open", obsidianURI(path))
 	return err
