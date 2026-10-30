@@ -236,6 +236,7 @@ func (c *Controller) renameWindow(a Args) (any, error) {
 		return nil, err
 	}
 	// Behåll namnet även om programmet i fönstret försöker byta det
+	_, _ = tmux("set-option", "-w", "-t", wid, "allow-rename", "off")
 	_, err = tmux("set-option", "-w", "-t", wid, "automatic-rename", "off")
 	return nil, err
 }
@@ -244,7 +245,17 @@ func (c *Controller) titlePane(a Args) (any, error) {
 	if err := a.need("pane"); err != nil {
 		return nil, err
 	}
-	_, err := tmux("select-pane", "-t", a.S("pane"), "-T", a.S("title"))
+	pane, title := a.S("pane"), a.S("title")
+	if title == "" {
+		// Tomt namn: låt programmet sätta titeln igen
+		_, _ = tmux("set-option", "-p", "-u", "-t", pane, "allow-set-title")
+		_, _ = tmux("set-option", "-p", "-u", "-t", pane, "@name")
+		return nil, nil
+	}
+	// Programmet (t.ex. Claude Code) får inte skriva över namnet
+	_, _ = tmux("set-option", "-p", "-t", pane, "allow-set-title", "off")
+	_, _ = tmux("set-option", "-p", "-t", pane, "@name", title)
+	_, err := tmux("select-pane", "-t", pane, "-T", title)
 	return nil, err
 }
 

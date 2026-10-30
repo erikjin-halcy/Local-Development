@@ -51,7 +51,7 @@ var automationCmds = []AutomationCmd{
 		argv: func(string) []string { return node("sync/archive.mjs", "list") }},
 	{ID: "archive-preview", Group: "Veckoarkiv", Label: "Förhandsvisa", Help: "Vad som skulle arkiveras nu, utan att ändra något", Inline: true,
 		argv: func(string) []string { return node("sync/archive.mjs", "--dry-run") }},
-	{ID: "archive-run", Group: "Veckoarkiv", Label: "Arkivera nu", Help: "Arkivera alla avslutade veckor (körs annars måndagar 00:30)",
+	{ID: "archive-run", Group: "Veckoarkiv", Label: "Arkivera nu", Help: "Arkivera Macens lokala filer från avslutade veckor (körs annars måndagar 01:00; Firestore arkiveras i molnet 00:30)",
 		argv: func(string) []string { return node("sync/archive.mjs") }},
 	{ID: "archive-restore", Group: "Veckoarkiv", Label: "Hämta tillbaka", Help: "Packa upp en vecka till valvet: Arkiv/<vecka>/", Arg: "vecka",
 		argv: func(w string) []string { return node("sync/archive.mjs", "restore", w) }},

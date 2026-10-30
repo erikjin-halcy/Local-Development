@@ -12,17 +12,19 @@ import (
 const sep = "\x1f"
 
 type Pane struct {
-	ID       string `json:"id"`
-	Index    int    `json:"index"`
-	Title    string `json:"title"`
-	Active   bool   `json:"active"`
-	Command  string `json:"command"`
-	Path     string `json:"path"`
-	Left     int    `json:"left"`
-	Top      int    `json:"top"`
-	Width    int    `json:"width"`
-	Height   int    `json:"height"`
-	Role     string `json:"role"`
+	ID      string `json:"id"`
+	Index   int    `json:"index"`
+	Title   string `json:"title"`
+	Active  bool   `json:"active"`
+	Command string `json:"command"`
+	Path    string `json:"path"`
+	Left    int    `json:"left"`
+	Top     int    `json:"top"`
+	Width   int    `json:"width"`
+	Height  int    `json:"height"`
+	Role    string `json:"role"`
+	// Namn som användaren gett panen (@name); visas i stället för programmet
+	Name     string `json:"name,omitempty"`
 	Dead     bool   `json:"dead"`
 	PID      int    `json:"pid"`
 	Worktree *Ref   `json:"worktree,omitempty"`
@@ -123,18 +125,18 @@ func collectTmux() ([]Session, error) {
 	}
 	paneRows, err := rows("list-panes", "-a", "-F", fmtFields("window_id", "pane_id", "pane_index", "pane_title",
 		"pane_active", "pane_current_command", "pane_current_path", "pane_left", "pane_top", "pane_width",
-		"pane_height", "@role", "pane_dead", "pane_pid"))
+		"pane_height", "@role", "pane_dead", "pane_pid", "@name"))
 	if err != nil {
 		return nil, err
 	}
 	for _, r := range paneRows {
-		if len(r) < 14 {
+		if len(r) < 15 {
 			continue
 		}
 		if w := windows[r[0]]; w != nil {
 			w.Panes = append(w.Panes, Pane{ID: r[1], Index: atoi(r[2]), Title: r[3], Active: r[4] == "1",
 				Command: r[5], Path: r[6], Left: atoi(r[7]), Top: atoi(r[8]), Width: atoi(r[9]),
-				Height: atoi(r[10]), Role: r[11], Dead: r[12] == "1", PID: atoi(r[13])})
+				Height: atoi(r[10]), Role: r[11], Dead: r[12] == "1", PID: atoi(r[13]), Name: r[14]})
 		}
 	}
 	for _, w := range winOrder {
