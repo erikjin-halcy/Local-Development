@@ -68,9 +68,17 @@ main.inspecting { grid-template-columns: minmax(0, 1fr) 460px; }
 .chip.orchp { border-left-color: var(--orch); }
 .commit { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .acts { display: flex; gap: 4px; justify-content: flex-end; flex-wrap: wrap; }
+/* Knappar visas bara när muspekaren är över repots huvud eller en rad */
+.hacts { display: flex; gap: 4px; }
+.chead .hacts, .wt .acts, .blist .acts { visibility: hidden; }
+.chead:hover .hacts, .chead:focus-within .hacts, .wt:hover .acts, .wt:focus-within .acts,
+.blist .brow:hover .acts { visibility: visible; }
+.wt.missing .acts { visibility: visible; }
 details.branches { padding: 6px 14px 10px; }
 details.branches summary { cursor: pointer; color: var(--muted); font-size: 12px; }
-.blist { display: grid; grid-template-columns: minmax(200px, auto) auto auto 1fr auto; gap: 4px 12px; margin-top: 8px; font-size: 12px; align-items: center; }
+.blist { display: flex; flex-direction: column; margin-top: 8px; font-size: 12px; }
+.blist .brow { display: grid; grid-template-columns: minmax(200px, 280px) 110px auto minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 2px 6px; border-radius: 5px; }
+.blist .brow:hover { background: var(--panel2); }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 th { text-align: left; color: var(--muted); font-weight: 500; font-size: 12px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
 td { padding: 7px 10px; border-bottom: 1px solid #202936; vertical-align: top; }
@@ -187,13 +195,13 @@ dialog#help { width: min(860px, 94vw); max-height: 88vh; }
 </dl>
 
 <h4>Repokortets huvud</h4>
+<p class="muted small" style="margin:0 0 8px">Knapparna i huvudet och på raderna visas när du håller muspekaren över dem.</p>
 <dl>
   <dt><b class="mono">Halcy-app</b></dt><dd>Repots namn (katalogens namn).</dd>
   <dt><a>owner/repo ↗</a></dt><dd>Repot på GitHub. Öppnas i webbläsaren.</dd>
   <dt><span class="badge pr">12 öppna PR</span></dt><dd>Öppna pull requests på GitHub. Klicka för att se dem.</dd>
   <dt class="mono small muted">~/Desktop/…</dt><dd>Var repot ligger.</dd>
-  <dt><button class="sm">+ Worktree</button></dt><dd>Checkar ut en ny eller befintlig branch i en egen katalog bredvid repot (<span class="mono">repo.worktrees/branch</span>), så att du kan jobba på flera branches samtidigt.</dd>
-  <dt><button class="sm">+ Worker</button></dt><dd>Som + Worktree, men startar också Claude Code i ett eget tmux-fönster där, med den uppgift du skriver.</dd>
+  <dt><button class="sm">+ Ny branch</button></dt><dd>Checkar ut en ny eller befintlig branch i en egen katalog bredvid repot (<span class="mono">repo.worktrees/branch</span>), så att du kan jobba på flera branches samtidigt. Välj om Claude ska starta där med en uppgift.</dd>
   <dt><button class="sm">Graf</button></dt><dd>Commitgrafen över alla branches, i panelen till höger.</dd>
   <dt><button class="sm">Arkivera</button></dt><dd>Gömmer repot från Aktiva/Inaktiva och från <span class="mono">devctl status</span>. Inget i repot ändras. <b>Återställ</b> tar tillbaka det.</dd>
 </dl>
@@ -400,22 +408,23 @@ function repoCard(r) {
       ${r.prs.length ? `<a class="badge pr" href="https://github.com/${esc(r.github)}/pulls" target="_blank" rel="noopener">${r.prs.length} öppna PR</a>` : ""}
       <span class="muted small mono">${esc(short(r.path))}</span>
       <span class="spacer"></span>
-      <button class="sm" data-act="wtAdd" data-repo="${esc(r.path)}" title="Skapa en ny worktree (egen katalog) för en ny eller befintlig branch">+ Worktree</button>
-      <button class="sm" data-act="workerNew" data-repo="${esc(r.path)}" title="Starta en Claude-worker på en branch, i en egen worktree">+ Worker</button>
+      <span class="hacts">
+      <button class="sm" data-act="wtAdd" data-repo="${esc(r.path)}" title="Checka ut en ny eller befintlig branch i en egen katalog, och starta Claude där om du vill">+ Ny branch</button>
       <button class="sm" data-act="graph" data-repo="${esc(r.path)}" title="Visa commitgrafen över alla branches">Graf</button>
       <button class="sm" data-act="archive" data-repo="${esc(r.path)}" data-archived="${r.archived ? "0" : "1"}" title="${r.archived ? "Visa repot i översikten igen" : "Göm repot från översikten. Inget i repot ändras."}">${r.archived ? "Återställ" : "Arkivera"}</button>
+      </span>
     </div>
     ${wts}
     ${others.length ? `<details class="branches" ${collapsed.has("b:" + r.path) ? "open" : ""} data-det="b:${esc(r.path)}">
       <summary title="Lokala branches som inte är utcheckade någonstans">${others.length} branches utan worktree</summary>
-      <div class="blist">${others.map(b => `
+      <div class="blist">${others.map(b => `<div class="brow">
         <span class="mono">${esc(b.name)}</span>
         <span class="muted">${esc(b.when)}</span>
         <span>${b.gone ? `<span class="badge bad">remote borta</span>` : b.ahead + b.behind ? `<span class="badge">↑${b.ahead} ↓${b.behind}</span>` : ""}
           ${b.pr ? `<a class="badge pr" href="${esc(b.pr.url)}" target="_blank" rel="noopener">PR #${b.pr.number}</a>` : ""}</span>
         <span class="commit">${esc(b.subject)}</span>
         <span class="acts"><button class="sm" data-act="wtAddBranch" data-repo="${esc(r.path)}" data-branch="${esc(b.name)}" title="Checka ut branchen i en egen worktree">Worktree</button>
-          <button class="sm" data-act="workerBranch" data-repo="${esc(r.path)}" data-branch="${esc(b.name)}" title="Starta en Claude-worker på branchen">Worker</button></span>`).join("")}
+          <button class="sm" data-act="workerBranch" data-repo="${esc(r.path)}" data-branch="${esc(b.name)}" title="Starta en Claude-worker på branchen">Worker</button></span></div>`).join("")}
       </div></details>` : ""}
   </div>`;
 }
@@ -792,11 +801,18 @@ document.addEventListener("click", async e => {
     case "worker": return workerForm(d.repo, d.branch);
     case "workerBranch": return workerForm(d.repo, d.branch);
     case "workerNew": return workerForm(d.repo || repoOptions()[0]?.[0]);
-    case "wtAdd": { const r = repoOf(d.repo); return form(`Ny worktree i ${r.name}`, [
+    case "wtAdd": { const r = repoOf(d.repo); return form(`Ny branch i ${r.name}`, [
       { key: "branch", label: "Branch (ny eller befintlig)", ph: "feat/…", list: r.branches.filter(b => !b.worktree).map(b => b.name) },
       { key: "base", label: "Bas för ny branch", value: r.default },
-      { key: "path", label: "Sökväg (valfri)", ph: `${short(r.path)}.worktrees/<branch>` },
-    ], "Skapa", async x => { const res = await api("worktree_add", { repo: d.repo, ...x }); toast(`Worktree: ${short(res.path)}`, true); }); }
+      { key: "then", label: "Sedan", type: "select", value: "none", options: [["none", "Bara skapa worktreen"], ["worker", "Starta Claude där med uppgiften nedan"]] },
+      { key: "task", label: "Uppgift till Claude (om du valt det ovan)", type: "textarea", rows: 3 },
+    ], "Skapa", async x => {
+      if (x.then === "worker") {
+        const res = await api("worker_start", { repo: d.repo, branch: x.branch, base: x.base, task: x.task });
+        toast(`Worker startad i ${res.repo}@${res.branch}`, true); return openInspect({ kind: "pane", id: res.pane });
+      }
+      const res = await api("worktree_add", { repo: d.repo, branch: x.branch, base: x.base }); toast(`Worktree: ${short(res.path)}`, true);
+    }, "Branchen checkas ut i en egen katalog bredvid repot, så att du kan jobba på flera branches samtidigt."); }
     case "wtAddBranch": { const res = await api("worktree_add", { repo: d.repo, branch: d.branch }); return toast(`Worktree: ${short(res.path)}`, true); }
     case "wtRemove": if (!confirm2()) return;
       return api("worktree_remove", { path: d.path, force: d.changes > 0 && b.dataset.forced === "1" }).catch(() => { if (d.changes > 0) { b.dataset.forced = "1"; toast(`Worktreen har ${d.changes} ocommittade ändringar. Klicka ✕ två gånger till för att ta bort ändå.`); } });
