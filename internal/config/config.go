@@ -72,8 +72,13 @@ func Dir() string {
 	return Home("~/.config/devctl")
 }
 
+// CacheDir är katalogen för cache och server.pid. Med DEVCTL_HOME (t.ex. en testinstans på en annan port)
+// ligger den under DEVCTL_HOME, så att instansen inte skriver över den riktiga serverns pid-fil.
 func CacheDir() string {
 	d := Home("~/.cache/devctl")
+	if h := os.Getenv("DEVCTL_HOME"); h != "" {
+		d = filepath.Join(h, "cache")
+	}
 	_ = os.MkdirAll(d, 0o755)
 	return d
 }
