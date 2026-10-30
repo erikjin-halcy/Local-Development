@@ -600,6 +600,16 @@ starta workers (egna Claude Code-sessioner) i egna worktrees. Webbgränssnittet:
 - Valv du får läsa som kontext (ändra inte i dem):
 %s
 
+## Rapportera aktuellt läge, inte gammal utskrift
+En pane visar bara det som senast skrevs ut; ett fel i en terminal kan redan vara åtgärdat, och text i en
+inmatningsruta kan vara Claude Codes grå förslag i stället för något användaren skrivit. Innan du
+rapporterar ett problem som pågående, kontrollera det aktuella läget:
+- deploy/moln: `+"`gcloud run services describe …`"+`, `+"`gcloud run revisions list …`"+`, `+"`gcloud run jobs executions list …`"+`
+- kod: `+"`git -C <repo> log -3`"+`, `+"`git status`"+`; CI: `+"`gh run list -R <repo>`"+`
+- sessioner: `+"`devctl status`"+` och vad panen visar längst ned (pågår något nu?)
+Säg vad du kontrollerade och när ("felet i %%42 är från 11:20; en senare deploy 12:30 lyckades").
+Kan du inte kontrollera, säg att det är vad panen visar och att det kan vara inaktuellt.
+
 ## Regler
 - En worker per worktree. Låt aldrig två workers ändra samma filer.
 - Stoppa inte servrar eller containrar, ta inte bort worktrees, pusha inte och öppna inte PR:er
@@ -1050,4 +1060,42 @@ func (c *Controller) diff(a Args) (any, error) {
 		out = out[:200_000] + "\n… (förkortad)"
 	}
 	return map[string]string{"text": out}, nil
+}
+
+// orchestratorReload startar om den globala orkestratorn med nya instruktioner och fortsätter
+// samma konversation (claude --resume). Görs bara när orkestratorn är ledig.
+func (c *Controller) orchestratorReload(Args) (any, error) {
+	o := c.col.Snapshot().Orchestrator
+	if o == nil {
+		return c.orchestratorStart(nil)
+	}
+	sess := state.SessionInPane(o.Pane)
+	if sess == nil {
+		return nil, errors.New("hittar inte orkestratorns Claude-session")
+	}
+	if sess.Status != "idle" {
+		return nil, errors.New("orkestratorn arbetar just nu; försök igen när den är klar")
+	}
+	path, err := writeCache("orchestrator-global.md", c.Brief())
+	if err != nil {
+		return nil, err
+	}
+	// Avsluta Claude och starta om i samma pane med samma session
+	if err := SendText(o.Pane, "/exit", true); err != nil {
+		return nil, err
+	}
+	for i := 0; i < 40; i++ {
+		time.Sleep(250 * time.Millisecond)
+		if cmd, _ := tmuxOut("display-message", "-p", "-t", o.Pane, "#{pane_current_command}"); cmd == "zsh" || cmd == "bash" || cmd == "fish" {
+			break
+		}
+	}
+	cmd := c.cfg.OrchestratorCmd + " --resume " + sess.SessionID + ` --allowedTools 'Bash(devctl:*)'`
+	for _, v := range append([]string{c.cfg.Obsidian.Vault}, c.cfg.Obsidian.ReadVaults...) {
+		if v != "" {
+			cmd += " --add-dir " + shellQuote(v)
+		}
+	}
+	cmd += ` --append-system-prompt "$(cat ` + shellQuote(path) + `)"`
+	return map[string]string{"pane": o.Pane, "session": sess.SessionID}, runIn(o.Pane, cmd)
 }

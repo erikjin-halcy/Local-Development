@@ -77,7 +77,7 @@ func (c *Controller) actions() map[string]action {
 		"worktree_add": c.worktreeAdd, "worktree_remove": c.worktreeRemove, "worktree_prune": c.worktreePrune,
 		"archive": c.archive, "open_privacy": c.openPrivacy, "run_action": c.runAction, "edit_actions": c.editActions, "repo_note": c.repoNote, "sync_sessions": c.syncSessionsAction,
 		"workflow_status": c.workflowStatus, "workflow_cancel": c.workflowCancel, "ci_rerun": c.ciRerun, "ci_dispatch": c.ciDispatch,
-		"kill_processes": c.killProcesses, "open_parked": c.openParked, "orch_history": c.orchHistory, "changes": c.changes, "diff": c.diff, "worker_start": c.workerStart,
+		"kill_processes": c.killProcesses, "open_parked": c.openParked, "orch_history": c.orchHistory, "orchestrator_reload": c.orchestratorReload, "changes": c.changes, "diff": c.diff, "worker_start": c.workerStart,
 		"open_worktree": c.openWorktree, "graph": c.graph, "editor": c.editor,
 		// processer och Docker
 		"kill_process": c.killProcess, "docker": c.docker, "docker_logs": c.dockerLogs,

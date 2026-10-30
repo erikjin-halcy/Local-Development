@@ -705,6 +705,7 @@ function renderOrch(v) {
       <button class="sm" data-act="workerNew" title="Starta en Claude-worker på en branch">+ Worker</button>
       <button class="sm" id="orchRaw" title="Visa Claudes terminal som den ser ut">Terminal</button>
       <button class="sm" data-act="brief" title="Orkestratorns instruktioner">Instruktioner</button>
+      <button class="sm" data-act="orchReload" title="Starta om orkestratorn med de senaste instruktionerna. Samtalet fortsätter.">↻ Ladda om</button>
       <button class="sm" data-act="attachOrch" title="Öppna sessionen i Terminal.app">↗</button>
     </div>
     <div class="oworkers" id="workers"></div>
@@ -1208,6 +1209,7 @@ document.addEventListener("click", async e => {
     case "repoNote": return api("repo_note", { repo: d.repo, open: true });
     case "prune": return api("worktree_prune", { repo: d.repo });
     case "orchStart": { const o = await api("orchestrator_start"); tab = "orchestrator"; store.set("tab", tab); return; }
+    case "orchReload": { b.disabled = true; await api("orchestrator_reload").finally(() => b.disabled = false); return toast("Orkestratorn startas om med nya instruktioner", true); }
     case "attachOrch": return api("attach", { session: S.orchestrator.session });
     case "brief": return openInspect({ kind: "text", title: "Orkestratorns instruktioner", load: async () => (await api("brief", {}, true)).text });
     // tmux

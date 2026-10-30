@@ -43,7 +43,7 @@ const usage = `devctl – kontrollpanel för lokalt utvecklingsarbete
   devctl automation [kommando] [arg]   Local-Automation: veckoarkiv, synk, deploy, inloggningar, tjänster
   devctl park "<text>" [--repo r] [--from s]   kom ihåg en fråga eller ett önskemål till senare
   devctl park list [--all] | park done <id>    parkerat för repot du står i (eller --repo)
-  devctl orchestrator            starta (eller visa) den globala orkestratorn
+  devctl orchestrator [--reload] starta (eller visa) den globala orkestratorn; --reload laddar nya instruktioner
   devctl brief                  orkestratorns systemprompt
   devctl autostart [--remove]    starta servern vid inloggning (launchd)
   devctl config                  sökväg till konfigurationen
@@ -174,6 +174,12 @@ func main() {
 	case "park":
 		park(cfg, pos, flags)
 	case "orchestrator":
+		if _, reload := flags["reload"]; reload {
+			res, err := c.do("orchestrator_reload", nil)
+			must(err)
+			fmt.Printf("Orkestratorn har startats om med nya instruktioner (samma konversation): %v\n", res.(map[string]any)["pane"])
+			return
+		}
 		res, err := c.do("orchestrator_start", nil)
 		must(err)
 		o := res.(map[string]any)
@@ -216,7 +222,7 @@ func abs(p string) string {
 func parse(args []string) ([]string, map[string]string) {
 	var pos []string
 	flags := map[string]string{}
-	boolean := map[string]bool{"json": true, "all": true, "force": true, "open": true, "remove": true, "yes": true}
+	boolean := map[string]bool{"json": true, "all": true, "force": true, "open": true, "remove": true, "yes": true, "reload": true}
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		if strings.HasPrefix(a, "-") && len(a) > 1 && !strings.HasPrefix(a, "-%") {
