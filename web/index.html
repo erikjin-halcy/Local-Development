@@ -61,6 +61,7 @@ main.inspecting { grid-template-columns: minmax(0, 1fr) 460px; }
 .flow .fs { padding: 1px 7px; border-radius: 10px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; cursor: pointer; }
 .flow .fs.done { opacity: .55; } .flow .fs.now { color: var(--accent); border-color: var(--accent); font-weight: 600; }
 .flow .arr { color: var(--line); }
+.flow button.sm, .fstep button.sm { padding: 0 7px; font-size: 11.5px; }
 .fstep { padding: 8px 0; border-bottom: 1px solid #202936; } .fstep:last-child { border-bottom: 0; }
 .fstep .sk { display: flex; gap: 8px; margin: 3px 0 0 14px; } .fstep .sk .mono { flex: none; color: var(--accent); }
 @media (max-width: 1300px) { .wt { grid-template-columns: 1fr 1fr; } }
@@ -313,7 +314,7 @@ dialog#help { width: min(860px, 94vw); max-height: 88vh; }
 <h4>Knappar på raden</h4>
 <dl>
   <dt><button class="sm">Kör ▾</button></dt><dd>Kör något i worktreen: <span class="mono">package.json</span>-skript (även i workspaces, t.ex. Metro i <span class="mono">apps/mobile</span>), make- och just-mål, deploy som känns igen (Firebase, Fly, Vercel) och egna actions. Överst finns dina <b>workflows</b> (flera steg i följd, t.ex. databas → backend → Metro; förloppet visas steg för steg) och längst ned <b>GitHub Actions</b> som kan startas för hand på branchen. Sök genom att skriva; Enter kör den första. ⚠ = deploy, migrering eller borttagning, som frågar först. Körs i ett eget tmux-fönster.<br>Egna actions: välj <b>✎ Egna actions</b> längst ned i menyn. De sparas lokalt i <span class="mono">~/.config/devctl/actions/&lt;repo&gt;.yaml</span>, aldrig i repot.</dd>
-  <dt><span class="flow" style="display:inline-flex"><span class="fs done">Bygg</span><span class="arr">→</span><span class="fs now">Committa</span></span></dt><dd>Arbetsflödet: stegen i repots arbetsflöde, där det aktuella steget för worktreen är markerat. Läget räknas ut från git och GitHub (ocommittade ändringar, opushade commits, öppen PR, landad på huvudbranchen), och ett Linear-ärende i branchnamnet visas som länk. Knappen <b>Arbetsflöde</b> på repots kort visar repots Claude-skills (<span class="mono">.claude/skills/</span>) och vilket steg de hör till. Arbetsflödet sparas lokalt i <span class="mono">~/.config/devctl/workflows/&lt;repo&gt;.yaml</span>, aldrig i repot.</dd>
+  <dt><span class="flow" style="display:inline-flex"><span class="fs done">Bygg</span><span class="arr">→</span><span class="fs now">Committa</span></span></dt><dd>Arbetsflödet: stegen i repots arbetsflöde, där det aktuella steget för worktreen är markerat. Läget räknas ut från git och GitHub (ocommittade ändringar, opushade commits, öppen PR, landad på huvudbranchen), och ett Linear-ärende i branchnamnet visas som länk. Knapparna <b>▶ /verify</b> och liknande skickar de aktuella stegens skills till Claude-sessionen i worktreen, men bara när den är ledig och inmatningsraden är tom. Finns ingen session erbjuds en worker. <b>⚠</b>-skills (som /save, som deployar eller mergar) föreslås bara och kräver att du bekräftar. Knappen <b>Arbetsflöde</b> på repots kort visar repots Claude-skills (<span class="mono">.claude/skills/</span>) och vilket steg de hör till. Arbetsflödet sparas lokalt i <span class="mono">~/.config/devctl/workflows/&lt;repo&gt;.yaml</span>, aldrig i repot.</dd>
   <dt><button class="sm">Worker</button></dt><dd>Startar Claude Code i ett nytt tmux-fönster i just den här worktreen, med en uppgift du skriver.</dd>
   <dt><button class="sm">Terminal</button></dt><dd>Öppnar ett nytt tmux-fönster i katalogen och visar det i panelen till höger.</dd>
   <dt><button class="sm">+ Anteckning</button></dt><dd>Skapar en anteckning för branchen i Obsidian (mål, anteckningar, status) och öppnar den. Står det <b>Anteckning</b> finns den redan.</dd>
@@ -584,6 +585,12 @@ const flowNow = (flow, stage) => flow.steps.map((s, i) => (s.when || []).include
 const issueLink = (flow, key) => !key ? "" : flow.linear?.url
   ? `<a class="badge pr" href="${esc(flow.linear.url + key)}" target="_blank" rel="noopener" title="Linear-ärendet i branchnamnet">${esc(key)} ↗</a>`
   : `<span class="badge pr" title="Linear-ärendet i branchnamnet">${esc(key)}</span>`;
+// Knappar för skillen i de aktuella stegen; skills som deployar eller mergar (confirm) öppnar en bekräftelse
+const flowButtons = (r, w, now) => [...new Set(now.flatMap(i => r.flow.steps[i].skills || []))]
+  .filter(n => (r.skills || []).some(s => s.name === n))
+  .map(n => { const c = (r.flow.confirm || []).includes(n);
+    return `<button class="sm ${c ? "danger" : ""}" data-act="flowSend" data-repo="${esc(r.path)}" data-path="${esc(w.path)}" data-skill="${esc(n)}"
+      title="${c ? `Föreslå /${esc(n)}: deployar eller mergar, så du får bekräfta först` : `Skicka /${esc(n)} till Claude i worktreen`}">${c ? "⚠" : "▶"} /${esc(n)}</button>`; }).join("");
 function flowStrip(r, w) {
   if (!r.flow?.steps?.length || !w.stage) return "";
   const now = flowNow(r.flow, w.stage), first = now.length ? now[0] : -1;
@@ -591,6 +598,7 @@ function flowStrip(r, w) {
     ${issueLink(r.flow, w.issue)}
     ${r.flow.steps.map((s, i) => `${i ? `<span class="arr">→</span>` : ""}<span class="fs ${now.includes(i) ? "now" : i < first ? "done" : ""}">${esc(s.label)}</span>`).join("")}
     <span class="muted small">· ${esc(STAGE_LABEL[w.stage] || w.stage)}</span>
+    ${w.missing ? "" : flowButtons(r, w, now)}
   </div>`;
 }
 function renderFlowInspect(el) {
@@ -610,10 +618,27 @@ function renderFlowInspect(el) {
       ${skills.length} skills i <span class="mono">.claude/skills/</span>. Arbetsflödet sparas i <span class="mono">~/.config/devctl/workflows/${esc(r.name)}.yaml</span>, inte i repot.</div>
     <div class="row"><button class="sm" data-act="flowEdit" data-repo="${esc(r.path)}">${r.flow ? "✎ Redigera arbetsflödet" : "+ Skapa arbetsflöde"}</button></div>
     ${wts.length && r.flow ? `<h4>Worktrees</h4>${wts.map(w => { const now = flowNow(r.flow, w.stage).map(i => r.flow.steps[i].label);
-      return `<div class="fstep"><span class="mono">${esc(w.branch)}</span> ${issueLink(r.flow, w.issue)}<div class="small muted">${esc(STAGE_LABEL[w.stage] || w.stage)}${now.length ? " → " + esc(now.join(" eller ")) : ""}</div></div>`; }).join("")}` : ""}
+      return `<div class="fstep"><span class="mono">${esc(w.branch)}</span> ${issueLink(r.flow, w.issue)}<div class="small muted">${esc(STAGE_LABEL[w.stage] || w.stage)}${now.length ? " → " + esc(now.join(" eller ")) : ""}</div>
+        <div class="row" style="margin-top:4px">${flowButtons(r, w, flowNow(r.flow, w.stage))}<button class="sm" data-act="flowPick" data-repo="${esc(r.path)}" data-path="${esc(w.path)}" title="Skicka ett annat av repots skills, med argument">Annat skill…</button></div></div>`; }).join("")}` : ""}
     ${r.flow ? `<h4>Steg</h4>${r.flow.steps.map((s, i) => `<div class="fstep"><div>${i + 1}. ${esc(s.label)} ${(s.when || []).length ? `<span class="muted small">· när ${esc(s.when.map(x => STAGE_LABEL[x] || x).join(", "))}</span>` : ""}</div>${(s.skills || []).map(skillRow).join("")}</div>`).join("")}
       ${(r.flow.groups || []).map(g => `<h4>${esc(g.label)}</h4><div class="fstep">${(g.skills || []).map(skillRow).join("")}</div>`).join("")}` : ""}
     ${rest.length ? `<h4>${r.flow ? "Övriga skills" : "Skills"}</h4><div class="fstep">${rest.map(skillRow).join("")}</div>` : ""}`;
+}
+
+// Skickar /skill till Claude i worktreen. Confirm-skills föreslås först i en dialog; utan session erbjuds en worker.
+async function flowSend(repoPath, wtPath, skill, args = "", confirmed = false) {
+  const r = repoOf(repoPath), w = r?.worktrees.find(x => x.path === wtPath); if (!w) return;
+  const desc = (r.skills || []).find(s => s.name === skill)?.description || "";
+  if ((r.flow?.confirm || []).includes(skill) && !confirmed)
+    return form(`Förslag: /${skill}`, [{ key: "args", label: "Argument (valfria)", value: args }], `Skicka /${skill}`,
+      x => flowSend(repoPath, wtPath, skill, x.args, true),
+      `<b>/${esc(skill)} deployar, mergar eller tar bort något.</b> ${esc(desc)}<br>Skickas till Claude i ${esc(r.name)}@${esc(w.branch)} först när du klickar Skicka.`);
+  const res = await api("flow_send", { repo: repoPath, path: wtPath, skill, args, confirm: confirmed });
+  if (!res.noSession) { toast(`${res.text} skickat till Claude i ${res.pane}`, true); return openInspect({ kind: "pane", id: res.pane }); }
+  form("Ingen Claude-session i worktreen", [], "Starta worker", async () => {
+    const x = await api("worker_start", { repo: repoPath, branch: w.branch, task: res.text });
+    toast(`Worker startad i ${x.repo}@${x.branch} med ${res.text}`, true); openInspect({ kind: "pane", id: x.pane });
+  }, `Ingen Claude körs i ${esc(r.name)}@${esc(w.branch)}. Starta en worker i worktreen som börjar med <span class="mono">${esc(res.text)}</span>?`);
 }
 
 // ---------- servrar ----------
@@ -1436,7 +1461,7 @@ document.addEventListener("click", async e => {
     if (a === "focus") return api("select", { pane: id });
     if (a === "title") return renamePane(id);
   }
-  const flEl = !t.closest("a") && t.closest("[data-flow]");
+  const flEl = !t.closest("a, button[data-act]") && t.closest("[data-flow]");
   if (flEl) return openInspect({ kind: "flow", repo: flEl.dataset.flow });
   const chEl = t.closest("[data-changes]");
   if (chEl) { const r = S.repos.find(x => x.worktrees.some(w => w.path === chEl.dataset.changes)); const w = r?.worktrees.find(x => x.path === chEl.dataset.changes);
@@ -1487,6 +1512,12 @@ document.addEventListener("click", async e => {
       return api("cleanup", { repo: d.repo, branch: d.branch, confirm: true }).then(() => toast(`${d.branch} är borttagen`));
     case "wtRemove": if (!confirm2()) return;
       return api("worktree_remove", { path: d.path, force: d.changes > 0 && b.dataset.forced === "1" }).catch(() => { if (d.changes > 0) { b.dataset.forced = "1"; toast(`Worktreen har ${d.changes} ocommittade ändringar. Klicka ✕ två gånger till för att ta bort ändå.`); } });
+    case "flowSend": return flowSend(d.repo, d.path, d.skill);
+    case "flowPick": { const r = repoOf(d.repo);
+      return form("Skicka skill", [
+        { key: "skill", label: "Skill", type: "select", options: (r.skills || []).map(s => [s.name, "/" + s.name + ((r.flow?.confirm || []).includes(s.name) ? " ⚠" : "")]), value: "" },
+        { key: "args", label: "Argument (valfria)", ph: "t.ex. HAL-123" },
+      ], "Fortsätt", x => flowSend(d.repo, d.path, x.skill, x.args), "Skickas till Claude-sessionen i worktreen när den är ledig och inmatningsraden är tom."); }
     case "flowEdit": { const res = await api("edit_flow", { repo: d.repo }); return toast(`Öppnar ${short(res.path)} i editorn. Sparade ändringar syns inom 10 sekunder.`, true); }
     case "graph": { const r = repoOf(d.repo); return openInspect({ kind: "commits", repo: d.repo, title: `Historik · ${r.name}`, rows: [], more: false }); }
     case "term": { const res = await api("open_worktree", { path: d.path }); return openInspect({ kind: "pane", id: res.pane }); }

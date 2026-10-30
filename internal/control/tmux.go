@@ -75,7 +75,7 @@ func (c *Controller) actions() map[string]action {
 		"orchestrator_window": c.orchestratorWindow,
 		// git
 		"worktree_add": c.worktreeAdd, "worktree_remove": c.worktreeRemove, "worktree_prune": c.worktreePrune,
-		"archive": c.archive, "open_privacy": c.openPrivacy, "run_action": c.runAction, "edit_actions": c.editActions, "edit_flow": c.editFlow, "repo_note": c.repoNote, "sync_sessions": c.syncSessionsAction,
+		"archive": c.archive, "open_privacy": c.openPrivacy, "run_action": c.runAction, "edit_actions": c.editActions, "edit_flow": c.editFlow, "flow_send": c.flowSend, "repo_note": c.repoNote, "sync_sessions": c.syncSessionsAction,
 		"workflow_status": c.workflowStatus, "workflow_cancel": c.workflowCancel, "ci_rerun": c.ciRerun, "ci_dispatch": c.ciDispatch,
 		"kill_processes": c.killProcesses, "open_parked": c.openParked, "orch_history": c.orchHistory, "orchestrator_reload": c.orchestratorReload,
 		"commits": c.commits, "pane_close": c.paneClose, "cleanup_list": c.cleanupList, "cleanup": c.cleanup, "report": c.report, "cloud_push": c.cloudPush, "cloud_status": c.cloudStatus, "open": c.openTarget, "stop_port": c.stopPort, "sessions": c.sessionsAction, "summarize": c.summarize,
