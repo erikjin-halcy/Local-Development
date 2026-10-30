@@ -203,6 +203,7 @@ func (c *Collector) refreshGit() {
 	var mu sync.Mutex
 	fresh := map[string]*Repo{}
 	todoCounts := config.OpenTodos(c.cfg)
+	tags := config.RepoTags()
 	for _, common := range commons {
 		if _, err := os.Stat(common); err != nil {
 			continue
@@ -220,6 +221,12 @@ func (c *Collector) refreshGit() {
 				r.Workflows = Workflows(wfs)
 				r.Dispatch = dispatchWorkflows(r.Worktrees[0].Path)
 				r.Parked = todoCounts[r.Name]
+				r.Tags = tags[r.Name]
+				if r.Tags == nil {
+					r.Tags = []string{}
+				}
+				r.LocalOnly = config.Private(c.cfg, r.Name)
+				r.Org = config.RepoOrg(r.Name)
 			}
 			mu.Lock()
 			fresh[common] = r
@@ -502,8 +509,8 @@ func NotePath(cfg config.Config, repo, branch string) string {
 
 // RepoDir är repots mapp i valvet ("" om inget valv är valt).
 func RepoDir(cfg config.Config, repo string) string {
-	if d := cfg.Obsidian.RepoDirs[repo]; d != "" {
-		return config.Home(d)
+	if d := config.PrivateRepoDir(cfg, repo); d != "" {
+		return d
 	}
 	if cfg.Obsidian.Vault == "" {
 		return ""

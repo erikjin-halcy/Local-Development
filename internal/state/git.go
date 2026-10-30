@@ -72,6 +72,10 @@ type Branch struct {
 }
 
 type Repo struct {
+	// Taggar från devctl (tags.json); local-only = materialet stannar på Macen
+	Tags      []string   `json:"tags"`
+	LocalOnly bool       `json:"localOnly"`
+	Org       string     `json:"org,omitempty"`
 	Name      string     `json:"name"`
 	Path      string     `json:"path"`
 	CommonDir string     `json:"-"`

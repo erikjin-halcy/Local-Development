@@ -52,6 +52,9 @@ const usage = `devctl – kontrollpanel för lokalt utvecklingsarbete
   devctl orchestrator [--reload] starta (eller visa) den globala orkestratorn; --reload laddar nya instruktioner
   devctl pane close <%%id> --yes       avsluta Claude och stäng en worker-pane (aldrig huvudpanen)
   devctl report <%%id> [--feature f]   utkast till sessionsrapport i Obsidian (innan panen stängs)
+  devctl repos [--json]                repon med taggar, compliance och org (för andra program)
+  devctl repo tag <repo> local-only [--remove]   materialet stannar på Macen (inget till iCloud-valvet eller molnet)
+  devctl repo org <repo> <org> [--clear]         organisation (grupperar repon)
   devctl cleanup [--repo r] [--yes]    mergade worktrees och branches som inte används; --yes tar bort dem
   devctl brief                  orkestratorns systemprompt
   devctl autostart [--remove]    starta servern vid inloggning (launchd)
@@ -247,6 +250,40 @@ func main() {
 		must(err)
 		o := res.(map[string]any)
 		fmt.Printf("Orkestratorn körs i tmux-sessionen %v, pane %v.\nAttacha: tmux attach -t %v   eller chatta i http://localhost:%d\n", o["session"], o["pane"], o["session"], cfg.Port)
+	case "repos":
+		res, err := c.do("repos", nil)
+		must(err)
+		if _, ok := flags["json"]; ok {
+			b, _ := json.MarshalIndent(res, "", "  ")
+			fmt.Println(string(b))
+			return
+		}
+		for _, x := range res.([]any) {
+			r := x.(map[string]any)
+			tags := []string{}
+			for _, t := range r["tags"].([]any) {
+				tags = append(tags, t.(string))
+			}
+			fmt.Printf("%-26s %-12s %-10s %s\n", r["name"], r["compliance"], r["org"], strings.Join(tags, ","))
+		}
+	case "repo":
+		// devctl repo tag <repo> <tagg> [--remove] | devctl repo org <repo> <org|--clear>
+		if len(pos) < 3 && !(len(pos) == 2 && pos[0] == "org") {
+			fail(errors.New("användning: devctl repo tag <repo> <tagg> [--remove] | devctl repo org <repo> <org> [--clear]"))
+		}
+		switch pos[0] {
+		case "tag":
+			_, remove := flags["remove"]
+			printResult(c.do("repo_tag", map[string]any{"repo": pos[1], "tag": pos[2], "on": !remove}))
+		case "org":
+			org := ""
+			if _, clear := flags["clear"]; !clear && len(pos) > 2 {
+				org = pos[2]
+			}
+			printResult(c.do("repo_org", map[string]any{"repo": pos[1], "org": org}))
+		default:
+			fail(fmt.Errorf("okänt: devctl repo %s", pos[0]))
+		}
 	case "cleanup":
 		// devctl cleanup [--repo r] visar förslagen; --yes tar bort dem
 		res, err := c.do("cleanup_list", map[string]any{"repo": flags["repo"]})
@@ -320,7 +357,7 @@ func abs(p string) string {
 func parse(args []string) ([]string, map[string]string) {
 	var pos []string
 	flags := map[string]string{}
-	boolean := map[string]bool{"json": true, "all": true, "force": true, "open": true, "remove": true, "yes": true, "reload": true, "main": true}
+	boolean := map[string]bool{"json": true, "all": true, "force": true, "open": true, "remove": true, "yes": true, "reload": true, "main": true, "clear": true}
 	// (--context, --background och --from tar värden)
 	for i := 0; i < len(args); i++ {
 		a := args[i]

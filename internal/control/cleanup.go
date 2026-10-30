@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/erikjin-halcy/Local-Development/internal/config"
 	"github.com/erikjin-halcy/Local-Development/internal/state"
 )
 
@@ -77,4 +78,56 @@ func (c *Controller) cleanup(a Args) (any, error) {
 	}
 	c.col.Refresh(true)
 	return item, nil
+}
+
+// ---------- taggar per repo ----------
+
+func (c *Controller) repoTag(a Args) (any, error) {
+	r, err := FindRepo(c.col.Snapshot(), a.S("repo"))
+	if err != nil {
+		return nil, err
+	}
+	if err := config.SetTag(r.Name, a.S("tag"), a.B("on", true)); err != nil {
+		return nil, err
+	}
+	c.col.Refresh(true)
+	return map[string]any{"repo": r.Name, "tags": config.RepoTags()[r.Name]}, nil
+}
+
+func (c *Controller) repoOrg(a Args) (any, error) {
+	r, err := FindRepo(c.col.Snapshot(), a.S("repo"))
+	if err != nil {
+		return nil, err
+	}
+	if err := config.SetOrg(r.Name, a.S("org")); err != nil {
+		return nil, err
+	}
+	c.col.Refresh(true)
+	return map[string]any{"repo": r.Name, "org": config.RepoOrg(r.Name)}, nil
+}
+
+// repos: alla repon med taggar, för andra program (devctl repos --json).
+func (c *Controller) reposAction(Args) (any, error) {
+	type info struct {
+		Name       string   `json:"name"`
+		Path       string   `json:"path"`
+		GitHub     string   `json:"github"`
+		Tags       []string `json:"tags"`
+		Compliance string   `json:"compliance"` // "local-only" eller ""
+		Org        string   `json:"org"`
+		Active     bool     `json:"active"`
+		Archived   bool     `json:"archived"`
+	}
+	out := []info{}
+	for _, r := range c.col.Snapshot().Repos {
+		i := info{Name: r.Name, Path: r.Path, GitHub: r.GitHub, Tags: r.Tags, Org: r.Org, Active: r.Active, Archived: r.Archived}
+		if i.Tags == nil {
+			i.Tags = []string{}
+		}
+		if config.Private(c.cfg, r.Name) {
+			i.Compliance = config.TagLocalOnly
+		}
+		out = append(out, i)
+	}
+	return out, nil
 }

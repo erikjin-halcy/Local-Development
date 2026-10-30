@@ -30,8 +30,61 @@ var (
 	cloudLastErr  string
 )
 
+// cloudSummary bygger dokumentet. Privata repon (config.Private) skickas aldrig med namn, branches,
+// PR:er, fynd, uppgifter eller sessioner; bara antal under "private". Fritext som nämner ett privat
+// repo (t.ex. en sessions senaste önskemål) utelämnas också.
 func (c *Controller) cloudSummary() map[string]any {
-	snap := c.col.Snapshot()
+	return cloudSummaryOf(c.cfg, c.col.Snapshot(), c.sessionInfos(), loadAllFindings(), config.Todos(c.cfg))
+}
+
+type cloudFinding struct {
+	Agent string
+	F     Finding
+}
+
+func loadAllFindings() []cloudFinding {
+	var out []cloudFinding
+	agents, _ := config.Agents()
+	for _, a := range agents {
+		for _, f := range loadAgentState(a.Name).Findings {
+			out = append(out, cloudFinding{Agent: a.Icon + " " + a.Label, F: f})
+		}
+	}
+	return out
+}
+
+func cloudSummaryOf(cfg config.Config, snap state.Snapshot, infos []sessionInfo, allFindings []cloudFinding, todos []config.Todo) map[string]any {
+	names := config.PrivateNames(cfg)
+	mentions := func(texts ...string) bool {
+		for _, t := range texts {
+			lt := strings.ToLower(t)
+			for _, n := range names {
+				if strings.Contains(lt, strings.ToLower(n)) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	// Repon vars mapp ligger i ett privat repo (t.ex. worktrees) räknas som privata
+	privPaths := []string{}
+	for _, r := range snap.Repos {
+		if config.Private(cfg, r.Name) {
+			privPaths = append(privPaths, r.Path)
+			for _, wt := range r.Worktrees {
+				privPaths = append(privPaths, wt.Path)
+			}
+		}
+	}
+	privCwd := func(cwd string) bool {
+		for _, p := range privPaths {
+			if cwd == p || strings.HasPrefix(cwd, p+"/") {
+				return true
+			}
+		}
+		return false
+	}
+	priv := map[string]int{}
 	host, _ := os.Hostname()
 	out := map[string]any{"host": strings.Split(host, ".")[0]}
 
@@ -44,18 +97,28 @@ func (c *Controller) cloudSummary() map[string]any {
 	}
 
 	var sessions []any
-	for _, s := range c.sessionInfos() {
+	for _, s := range infos {
 		if s.Last == "" || time.Since(parseLocal(s.Last)) > 24*time.Hour {
 			continue // bara sessioner som varit aktiva det senaste dygnet
 		}
-		sessions = append(sessions, map[string]any{"name": s.Name, "status": s.Status, "repo": s.Repo, "branch": s.Branch,
-			"title": s.Title, "last": s.Last, "prompt": clip(s.Prompt, 160), "reply": clip(s.Reply, 240)})
+		if config.Private(cfg, s.Repo) || privCwd(s.Cwd) || mentions(s.Name, s.Title, s.Branch) {
+			priv["sessions"]++
+			continue
+		}
+		m := map[string]any{"name": s.Name, "status": s.Status, "repo": s.Repo, "branch": s.Branch, "title": s.Title, "last": s.Last}
+		if !mentions(s.Prompt) {
+			m["prompt"] = clip(s.Prompt, 160)
+		}
+		if !mentions(s.Reply) {
+			m["reply"] = clip(s.Reply, 240)
+		}
+		sessions = append(sessions, m)
 	}
 	out["sessions"] = sessions
 
 	servers := map[string][]string{}
 	for _, sv := range snap.Servers {
-		if sv.App || sv.Worktree == nil {
+		if sv.App || sv.Worktree == nil || config.Private(cfg, sv.Worktree.Repo) {
 			continue
 		}
 		k := sv.Worktree.Repo + "@" + sv.Worktree.Branch
@@ -68,6 +131,10 @@ func (c *Controller) cloudSummary() map[string]any {
 		if !r.Active || r.Archived {
 			continue
 		}
+		if config.Private(cfg, r.Name) {
+			priv["repos"]++
+			continue
+		}
 		var branches []any
 		for _, wt := range r.Worktrees {
 			if wt.Missing || wt.Branch == "" {
@@ -76,7 +143,10 @@ func (c *Controller) cloudSummary() map[string]any {
 			b := map[string]any{"branch": wt.Branch, "changes": wt.Changes, "ahead": wt.Ahead, "behind": wt.Behind,
 				"last": wt.Last.Subject, "panes": len(wt.Panes), "containers": len(wt.Containers),
 				"servers": servers[r.Name+"@"+wt.Branch]}
-			if wt.PR != nil {
+			if mentions(wt.Last.Subject) {
+				b["last"] = "" // nämner ett privat repo
+			}
+			if wt.PR != nil && !mentions(wt.PR.Title) {
 				b["pr"] = fmt.Sprintf("#%d %s", wt.PR.Number, wt.PR.Title)
 				b["prUrl"] = wt.PR.URL
 			}
@@ -90,19 +160,26 @@ func (c *Controller) cloudSummary() map[string]any {
 	out["repos"] = repos
 
 	var findings []any
-	agents, _ := config.Agents()
-	for _, a := range agents {
-		for _, f := range loadAgentState(a.Name).Findings {
-			if f.Status == "öppen" {
-				findings = append(findings, map[string]any{"agent": a.Icon + " " + a.Label, "id": f.ID, "severity": f.Severity,
-					"repo": f.Repo, "branch": f.Branch, "file": f.File, "rule": f.Rule, "finding": clip(f.Finding, 220)})
-			}
+	for _, cf := range allFindings {
+		f := cf.F
+		if f.Status != "öppen" {
+			continue
 		}
+		if config.Private(cfg, f.Repo) || mentions(f.Repo, f.Branch, f.File, f.Finding) {
+			priv["findings"]++
+			continue
+		}
+		findings = append(findings, map[string]any{"agent": cf.Agent, "id": f.ID, "severity": f.Severity,
+			"repo": f.Repo, "branch": f.Branch, "file": f.File, "rule": f.Rule, "finding": clip(f.Finding, 220)})
 	}
 	out["findings"] = findings
 
 	var parked []any
-	for _, t := range config.Todos(c.cfg) {
+	for _, t := range todos {
+		if t.Status != "klar" && (config.Private(cfg, t.Repo) || mentions(t.Title)) {
+			priv["todos"]++
+			continue
+		}
 		if t.Status != "klar" {
 			parked = append(parked, map[string]any{"repo": t.Repo, "text": clip(t.Title, 200), "date": t.Created, "status": t.Status})
 		}
@@ -122,6 +199,8 @@ func (c *Controller) cloudSummary() map[string]any {
 		}
 	}
 	out["counts"] = map[string]any{"servers": devServers, "containers": running, "sessions": len(sessions)}
+	// Bara antal för privata repon: inga namn, ingen text
+	out["private"] = map[string]any{"repos": priv["repos"], "sessions": priv["sessions"], "findings": priv["findings"], "todos": priv["todos"]}
 	return out
 }
 
@@ -239,6 +318,9 @@ func (c *Controller) cloudPush(Args) (any, error) {
 	}
 	return map[string]string{"pushed": cloudLastPush.Format("15:04")}, nil
 }
+
+// cloudPreview visar exakt vad som skulle skickas, utan att skicka något.
+func (c *Controller) cloudPreview(Args) (any, error) { return c.cloudSummary(), nil }
 
 func (c *Controller) cloudStatus(Args) (any, error) {
 	cloudMu.Lock()

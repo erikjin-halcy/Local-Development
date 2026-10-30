@@ -20,6 +20,9 @@ type Obsidian struct {
 	// Repomapp per repo utanför arbetsvalvet (för repon vars material inte får synkas): repo-sidan,
 	// Branches/, Claude/ och sessionsrapporterna hamnar där. Standard: <vault>/<projectDir>/<repo>.
 	RepoDirs map[string]string `json:"repoDirs,omitempty"`
+	// Mapp för privata repon (taggen local-only) som saknar en egen mapp i repoDirs.
+	// Standard: ~/.config/devctl/lokalt. Ska inte ligga i en mapp som synkas.
+	LocalRoot string `json:"localRoot,omitempty"`
 	// Mapp för sessionsrapporter per repo. Standard: <repomappen>/Claude/Sessioner.
 	SessionReports map[string]string `json:"sessionReports,omitempty"`
 }
@@ -119,21 +122,69 @@ func Load() (Config, error) {
 
 func Path() string { return filepath.Join(Dir(), "config.json") }
 
-// PrivateRoot är mappen som håller ett repos material utanför arbetsvalvet (föräldern till dess
-// obsidian.repoDirs-mapp), eller "" om repot ligger i arbetsvalvet. Dagslogg och To do för sådana repon
-// skrivs där i stället för i arbetsvalvet.
+// Privata repon: taggen local-only (tags.json) eller en egen mapp i obsidian.repoDirs. Deras material
+// stannar på Macen: inget i arbetsvalvet (som synkas), inget i molnsammanfattningen.
+
+// LocalRoot är mappen för privata repon som saknar en egen mapp i obsidian.repoDirs.
+func LocalRoot(cfg Config) string {
+	if cfg.Obsidian.LocalRoot != "" {
+		return Home(cfg.Obsidian.LocalRoot)
+	}
+	return filepath.Join(Dir(), "lokalt")
+}
+
+// PrivateRoot är mappen som håller ett privat repos material utanför arbetsvalvet (föräldern till dess
+// repomapp), eller "" om repot inte är privat. Dagslogg och To do för sådana repon skrivs där.
 func PrivateRoot(cfg Config, repo string) string {
+	if repo == "" {
+		return ""
+	}
 	if d := cfg.Obsidian.RepoDirs[repo]; d != "" {
 		return filepath.Dir(Home(d))
+	}
+	if HasTag(repo, TagLocalOnly) {
+		return LocalRoot(cfg)
 	}
 	return ""
 }
 
-// PrivateRoots är alla sådana mappar.
+// PrivateRepoDir är repomappen för ett privat repo ("" om repot inte är privat).
+func PrivateRepoDir(cfg Config, repo string) string {
+	if d := cfg.Obsidian.RepoDirs[repo]; d != "" {
+		return Home(d)
+	}
+	if HasTag(repo, TagLocalOnly) {
+		return filepath.Join(LocalRoot(cfg), repo)
+	}
+	return ""
+}
+
+// PrivateNames är namnen på alla privata repon (för att känna igen dem i fritext).
+func PrivateNames(cfg Config) []string {
+	set := map[string]bool{}
+	for r := range cfg.Obsidian.RepoDirs {
+		set[r] = true
+	}
+	for r, tags := range RepoTags() {
+		for _, t := range tags {
+			if t == TagLocalOnly {
+				set[r] = true
+			}
+		}
+	}
+	out := make([]string, 0, len(set))
+	for r := range set {
+		out = append(out, r)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// PrivateRoots är alla mappar för privata repon.
 func PrivateRoots(cfg Config) []string {
 	seen := map[string]bool{}
 	var out []string
-	for repo := range cfg.Obsidian.RepoDirs {
+	for _, repo := range PrivateNames(cfg) {
 		if r := PrivateRoot(cfg, repo); r != "" && !seen[r] {
 			seen[r] = true
 			out = append(out, r)
@@ -142,3 +193,6 @@ func PrivateRoots(cfg Config) []string {
 	sort.Strings(out)
 	return out
 }
+
+// Private svarar på om ett repos material måste stanna på Macen.
+func Private(cfg Config, repo string) bool { return PrivateRoot(cfg, repo) != "" }

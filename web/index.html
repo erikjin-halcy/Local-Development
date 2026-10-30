@@ -271,6 +271,7 @@ dialog#help { width: min(860px, 94vw); max-height: 88vh; }
   <dt><b class="mono">Halcy-app</b></dt><dd>Repots namn (katalogens namn).</dd>
   <dt><a>owner/repo ↗</a></dt><dd>Repot på GitHub. Öppnas i webbläsaren.</dd>
   <dt><span class="badge pr">12 öppna PR</span></dt><dd>Öppna pull requests på GitHub. Klicka för att se dem.</dd>
+  <dt><span class="badge">🔒 lokalt</span></dt><dd>Repot har taggen <span class="mono">local-only</span>: dess material stannar på Macen. Inget skickas till molnet, och anteckningar, dagslogg, To do och sessionsrapporter skrivs utanför iCloud-valvet. Sätts med 🔒 på repokortet eller <span class="mono">devctl repo tag &lt;repo&gt; local-only</span>.</dd>
   <dt><span class="badge warn">📌 3 att göra</span></dt><dd>Öppna uppgifter för repot i To do-listan i Obsidian (<span class="mono">05 To do</span>). Varje uppgift har en egen sida med kontext. Frågor som du tar upp medan Claude jobbar med annat hamnar där automatiskt (skillen <span class="mono">parkera</span>). Klicka för listan.</dd>
   <dt class="mono small muted">~/Desktop/…</dt><dd>Var repot ligger.</dd>
   <dt><button class="sm">+ Ny branch</button></dt><dd>Checkar ut en ny eller befintlig branch i en egen katalog bredvid repot (<span class="mono">repo.worktrees/branch</span>), så att du kan jobba på flera branches samtidigt. Välj om Claude ska starta där med en uppgift.</dd>
@@ -504,6 +505,7 @@ function repoCard(r) {
       ${r.archived && r.busy ? `<span class="badge warn" title="Arkiverat, men något körs i det">igång</span>` : ""}
       ${r.github ? `<a class="small" href="https://github.com/${esc(r.github)}" target="_blank" rel="noopener">${esc(r.github)} ↗</a>` : `<span class="muted small">ingen GitHub-remote</span>`}
       ${r.prs.length ? `<a class="badge pr" href="https://github.com/${esc(r.github)}/pulls" target="_blank" rel="noopener">${r.prs.length} öppna PR</a>` : ""}
+      ${r.localOnly ? `<span class="badge" style="cursor:pointer" data-act="localOnly" data-repo="${esc(r.name)}" data-on="0" title="local-only${r.org ? " · " + esc(r.org) : ""}: repots material stannar på Macen. Inget skickas till molnet (Firestore) och anteckningar, logg, To do och sessionsrapporter skrivs utanför iCloud-valvet. Klicka för att ta bort taggen.">🔒 lokalt</span>` : ""}
       ${r.parked ? `<span class="badge warn" style="cursor:pointer" data-act="parked" data-repo="${esc(r.path)}" title="Uppgifter i To do-listan för repot. Klicka för att öppna listan i Obsidian.">📌 ${r.parked} att göra</span>` : ""}
       <span class="muted small mono">${esc(short(r.path))}</span>
       <span class="spacer"></span>
@@ -511,6 +513,7 @@ function repoCard(r) {
       <button class="sm" data-act="wtAdd" data-repo="${esc(r.path)}" title="Checka ut en ny eller befintlig branch i en egen katalog, och starta Claude där om du vill">+ Ny branch</button>
       <button class="sm" data-act="repoNote" data-repo="${esc(r.path)}" ${S.vault ? "" : "disabled"} title="Öppna repots mapp och startsida i Obsidian">Obsidian</button>
       <button class="sm" data-act="graph" data-repo="${esc(r.path)}" title="Senaste commits på alla branches">Historik</button>
+      ${r.localOnly ? "" : `<button class="sm" data-act="localOnly" data-repo="${esc(r.name)}" data-on="1" title="Märk repot local-only: dess material stannar på Macen (inget till molnet eller iCloud-valvet)">🔒</button>`}
       <button class="sm" data-act="archive" data-repo="${esc(r.path)}" data-archived="${r.archived ? "0" : "1"}" title="${r.archived ? "Visa repot i översikten igen" : "Göm repot från översikten. Inget i repot ändras."}">${r.archived ? "Återställ" : "Arkivera"}</button>
       </span>
     </div>
@@ -1429,6 +1432,12 @@ document.addEventListener("click", async e => {
       const res = await api("worktree_add", { repo: d.repo, branch: x.branch, base: x.base }); toast(`Worktree: ${short(res.path)}`, true);
     }, "Branchen checkas ut i en egen katalog bredvid repot, så att du kan jobba på flera branches samtidigt."); }
     case "wtAddBranch": { const res = await api("worktree_add", { repo: d.repo, branch: d.branch }); return toast(`Worktree: ${short(res.path)}`, true); }
+    case "localOnly": {
+      const on = d.on === "1";
+      if (!confirm(on ? `Märk ${d.repo} som local-only?\n\nDå skickas inget om repot till molnet, och anteckningar, dagslogg, To do och sessionsrapporter skrivs utanför iCloud-valvet. Det som redan finns i valvet flyttas inte automatiskt.`
+        : `Ta bort local-only från ${d.repo}?\n\nDå kan repots namn, branches och sessioner skickas till molnet och skrivas i iCloud-valvet igen.`)) return;
+      return api("repo_tag", { repo: d.repo, tag: "local-only", on });
+    }
     case "cleanup":
       if (!confirm(`Ta bort worktreen och branchen ${d.branch} i ${d.repo}?\n\nBranchen är mergad, så inga commits försvinner (git branch -d).`)) return;
       return api("cleanup", { repo: d.repo, branch: d.branch, confirm: true }).then(() => toast(`${d.branch} är borttagen`));
