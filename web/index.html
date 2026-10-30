@@ -56,6 +56,13 @@ main.inspecting { grid-template-columns: minmax(0, 1fr) 460px; }
 .wt:last-child { border-bottom: 0; }
 .wt.busy { background: #111a24; }
 .wt.missing { opacity: .45; }
+/* Arbetsflöde: stegen per worktree och panelen per repo */
+.flow { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: -2px; font-size: 11.5px; }
+.flow .fs { padding: 1px 7px; border-radius: 10px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; cursor: pointer; }
+.flow .fs.done { opacity: .55; } .flow .fs.now { color: var(--accent); border-color: var(--accent); font-weight: 600; }
+.flow .arr { color: var(--line); }
+.fstep { padding: 8px 0; border-bottom: 1px solid #202936; } .fstep:last-child { border-bottom: 0; }
+.fstep .sk { display: flex; gap: 8px; margin: 3px 0 0 14px; } .fstep .sk .mono { flex: none; color: var(--accent); }
 @media (max-width: 1300px) { .wt { grid-template-columns: 1fr 1fr; } }
 .bname { font: 600 13px var(--mono); word-break: break-all; }
 .bpath { font: 11px var(--mono); color: var(--muted); word-break: break-all; }
@@ -306,6 +313,7 @@ dialog#help { width: min(860px, 94vw); max-height: 88vh; }
 <h4>Knappar på raden</h4>
 <dl>
   <dt><button class="sm">Kör ▾</button></dt><dd>Kör något i worktreen: <span class="mono">package.json</span>-skript (även i workspaces, t.ex. Metro i <span class="mono">apps/mobile</span>), make- och just-mål, deploy som känns igen (Firebase, Fly, Vercel) och egna actions. Överst finns dina <b>workflows</b> (flera steg i följd, t.ex. databas → backend → Metro; förloppet visas steg för steg) och längst ned <b>GitHub Actions</b> som kan startas för hand på branchen. Sök genom att skriva; Enter kör den första. ⚠ = deploy, migrering eller borttagning, som frågar först. Körs i ett eget tmux-fönster.<br>Egna actions: välj <b>✎ Egna actions</b> längst ned i menyn. De sparas lokalt i <span class="mono">~/.config/devctl/actions/&lt;repo&gt;.yaml</span>, aldrig i repot.</dd>
+  <dt><span class="flow" style="display:inline-flex"><span class="fs done">Bygg</span><span class="arr">→</span><span class="fs now">Committa</span></span></dt><dd>Arbetsflödet: stegen i repots arbetsflöde, där det aktuella steget för worktreen är markerat. Läget räknas ut från git och GitHub (ocommittade ändringar, opushade commits, öppen PR, landad på huvudbranchen), och ett Linear-ärende i branchnamnet visas som länk. Knappen <b>Arbetsflöde</b> på repots kort visar repots Claude-skills (<span class="mono">.claude/skills/</span>) och vilket steg de hör till. Arbetsflödet sparas lokalt i <span class="mono">~/.config/devctl/workflows/&lt;repo&gt;.yaml</span>, aldrig i repot.</dd>
   <dt><button class="sm">Worker</button></dt><dd>Startar Claude Code i ett nytt tmux-fönster i just den här worktreen, med en uppgift du skriver.</dd>
   <dt><button class="sm">Terminal</button></dt><dd>Öppnar ett nytt tmux-fönster i katalogen och visar det i panelen till höger.</dd>
   <dt><button class="sm">+ Anteckning</button></dt><dd>Skapar en anteckning för branchen i Obsidian (mål, anteckningar, status) och öppnar den. Står det <b>Anteckning</b> finns den redan.</dd>
@@ -511,6 +519,7 @@ function repoCard(r) {
       <button class="sm" data-act="wtAdd" data-repo="${esc(r.path)}" title="Checka ut en ny eller befintlig branch i en egen katalog, och starta Claude där om du vill">+ Ny branch</button>
       <button class="sm" data-act="repoNote" data-repo="${esc(r.path)}" ${S.vault ? "" : "disabled"} title="Öppna repots mapp och startsida i Obsidian">Obsidian</button>
       <button class="sm" data-act="graph" data-repo="${esc(r.path)}" title="Senaste commits på alla branches">Historik</button>
+      ${r.flow || r.skills?.length ? `<button class="sm" data-flow="${esc(r.path)}" title="Repots Claude-skills (${r.skills?.length || 0} st)${r.flow ? " och i vilken ordning de används" : ""}">Arbetsflöde</button>` : ""}
       <button class="sm" data-act="archive" data-repo="${esc(r.path)}" data-archived="${r.archived ? "0" : "1"}" title="${r.archived ? "Visa repot i översikten igen" : "Göm repot från översikten. Inget i repot ändras."}">${r.archived ? "Återställ" : "Arkivera"}</button>
       </span>
     </div>
@@ -563,7 +572,48 @@ function wtRow(r, w) {
       ${w.missing ? `<button class="sm" data-act="prune" data-repo="${esc(r.path)}" title="Ta bort git:s uppgifter om worktrees vars katalog inte finns längre">Rensa</button>`
         : w.main ? "" : `<button class="sm danger" data-act="wtRemove" data-path="${esc(w.path)}" data-changes="${w.changes}" title="Ta bort worktreens katalog. Branchen och dess commits finns kvar.">✕</button>`}
     </div>
+    ${flowStrip(r, w)}
   </div>`;
+}
+
+// ---------- arbetsflöde (Claude-skills i ordning, per repo) ----------
+const STAGE_LABEL = { fresh: "inga egna commits än", changes: "ocommittade ändringar", committed: "commits som inte är pushade",
+  pushed: "pushad, ingen PR", pr: "PR öppen", landed: "commits finns på huvudbranchen" };
+// Index för de steg som är aktuella i worktreens läge
+const flowNow = (flow, stage) => flow.steps.map((s, i) => (s.when || []).includes(stage) ? i : -1).filter(i => i >= 0);
+const issueLink = (flow, key) => !key ? "" : flow.linear?.url
+  ? `<a class="badge pr" href="${esc(flow.linear.url + key)}" target="_blank" rel="noopener" title="Linear-ärendet i branchnamnet">${esc(key)} ↗</a>`
+  : `<span class="badge pr" title="Linear-ärendet i branchnamnet">${esc(key)}</span>`;
+function flowStrip(r, w) {
+  if (!r.flow?.steps?.length || !w.stage) return "";
+  const now = flowNow(r.flow, w.stage), first = now.length ? now[0] : -1;
+  return `<div class="flow" data-flow="${esc(r.path)}" title="Arbetsflöde: ${esc(STAGE_LABEL[w.stage] || w.stage)}. Klicka för stegen och deras skills.">
+    ${issueLink(r.flow, w.issue)}
+    ${r.flow.steps.map((s, i) => `${i ? `<span class="arr">→</span>` : ""}<span class="fs ${now.includes(i) ? "now" : i < first ? "done" : ""}">${esc(s.label)}</span>`).join("")}
+    <span class="muted small">· ${esc(STAGE_LABEL[w.stage] || w.stage)}</span>
+  </div>`;
+}
+function renderFlowInspect(el) {
+  const r = repoOf(inspect.repo); if (!r) return;
+  const key = "flow:" + r.path + JSON.stringify([r.flow, r.skills, r.worktrees.map(w => w.stage + w.issue)]);
+  if (el.dataset.key === key) return;
+  el.dataset.key = key;
+  const skills = r.skills || [], byName = Object.fromEntries(skills.map(s => [s.name, s]));
+  const confirm = new Set(r.flow?.confirm || []);
+  const skillRow = n => `<div class="sk"><span class="mono">/${esc(n)}${confirm.has(n) ? ` <span title="Deployar eller mergar: föreslås bara och kräver bekräftelse">⚠</span>` : ""}</span>
+    <span class="small ${byName[n] ? "muted" : "bad"}">${byName[n] ? esc(byName[n].description) : "finns inte i .claude/skills/"}</span></div>`;
+  const used = new Set([...(r.flow?.steps || []), ...(r.flow?.groups || [])].flatMap(s => s.skills || []));
+  const rest = skills.filter(s => !used.has(s.name)).map(s => s.name);
+  const wts = r.worktrees.filter(w => w.stage);
+  el.innerHTML = `<div class="row"><h2>Arbetsflöde · ${esc(r.name)}</h2><button class="sm" id="iClose">✕</button></div>
+    <div class="meta">${r.flow ? esc(r.flow.label || "") : "Inget arbetsflöde än. Skapa ett för att ordna repots skills i steg och se var varje worktree är."}
+      ${skills.length} skills i <span class="mono">.claude/skills/</span>. Arbetsflödet sparas i <span class="mono">~/.config/devctl/workflows/${esc(r.name)}.yaml</span>, inte i repot.</div>
+    <div class="row"><button class="sm" data-act="flowEdit" data-repo="${esc(r.path)}">${r.flow ? "✎ Redigera arbetsflödet" : "+ Skapa arbetsflöde"}</button></div>
+    ${wts.length && r.flow ? `<h4>Worktrees</h4>${wts.map(w => { const now = flowNow(r.flow, w.stage).map(i => r.flow.steps[i].label);
+      return `<div class="fstep"><span class="mono">${esc(w.branch)}</span> ${issueLink(r.flow, w.issue)}<div class="small muted">${esc(STAGE_LABEL[w.stage] || w.stage)}${now.length ? " → " + esc(now.join(" eller ")) : ""}</div></div>`; }).join("")}` : ""}
+    ${r.flow ? `<h4>Steg</h4>${r.flow.steps.map((s, i) => `<div class="fstep"><div>${i + 1}. ${esc(s.label)} ${(s.when || []).length ? `<span class="muted small">· när ${esc(s.when.map(x => STAGE_LABEL[x] || x).join(", "))}</span>` : ""}</div>${(s.skills || []).map(skillRow).join("")}</div>`).join("")}
+      ${(r.flow.groups || []).map(g => `<h4>${esc(g.label)}</h4><div class="fstep">${(g.skills || []).map(skillRow).join("")}</div>`).join("")}` : ""}
+    ${rest.length ? `<h4>${r.flow ? "Övriga skills" : "Skills"}</h4><div class="fstep">${rest.map(skillRow).join("")}</div>` : ""}`;
 }
 
 // ---------- servrar ----------
@@ -1059,6 +1109,7 @@ function renderInspector() {
   if (inspect.kind === "changes") { renderChanges(el); return; }
   if (inspect.kind === "commits") { renderCommits(el); return; }
   if (inspect.kind === "ci") { renderCIInspect(el); return; }
+  if (inspect.kind === "flow") { renderFlowInspect(el); return; }
   if (inspect.kind === "text") {
     if (el.dataset.key === inspect.title) return;
     el.dataset.key = inspect.title;
@@ -1385,6 +1436,8 @@ document.addEventListener("click", async e => {
     if (a === "focus") return api("select", { pane: id });
     if (a === "title") return renamePane(id);
   }
+  const flEl = !t.closest("a") && t.closest("[data-flow]");
+  if (flEl) return openInspect({ kind: "flow", repo: flEl.dataset.flow });
   const chEl = t.closest("[data-changes]");
   if (chEl) { const r = S.repos.find(x => x.worktrees.some(w => w.path === chEl.dataset.changes)); const w = r?.worktrees.find(x => x.path === chEl.dataset.changes);
     return openInspect({ kind: "changes", path: chEl.dataset.changes, title: `${r?.name}@${w?.branch || ""}` }); }
@@ -1434,6 +1487,7 @@ document.addEventListener("click", async e => {
       return api("cleanup", { repo: d.repo, branch: d.branch, confirm: true }).then(() => toast(`${d.branch} är borttagen`));
     case "wtRemove": if (!confirm2()) return;
       return api("worktree_remove", { path: d.path, force: d.changes > 0 && b.dataset.forced === "1" }).catch(() => { if (d.changes > 0) { b.dataset.forced = "1"; toast(`Worktreen har ${d.changes} ocommittade ändringar. Klicka ✕ två gånger till för att ta bort ändå.`); } });
+    case "flowEdit": { const res = await api("edit_flow", { repo: d.repo }); return toast(`Öppnar ${short(res.path)} i editorn. Sparade ändringar syns inom 10 sekunder.`, true); }
     case "graph": { const r = repoOf(d.repo); return openInspect({ kind: "commits", repo: d.repo, title: `Historik · ${r.name}`, rows: [], more: false }); }
     case "term": { const res = await api("open_worktree", { path: d.path }); return openInspect({ kind: "pane", id: res.pane }); }
     case "note": { const res = await api("note", { repo: d.repo, branch: d.branch, open: true }); return toast(res.created ? "Anteckning skapad i Obsidian" : "Öppnar anteckningen i Obsidian", true); }
