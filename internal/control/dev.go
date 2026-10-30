@@ -803,7 +803,7 @@ func (c *Controller) SyncRepoNotes() (int, error) {
 	}
 	n := 0
 	for _, r := range c.col.Snapshot().Repos {
-		if !r.Active || (r.Archived && !r.Busy) {
+		if !r.Active || r.Archived {
 			continue
 		}
 		if err := c.ensureClaudeContext(r); err != nil {

@@ -230,7 +230,7 @@ dialog#help { width: min(860px, 94vw); max-height: 88vh; }
 <dl>
   <dt><span class="seg"><button class="on">Aktiva</button></span></dt><dd>Repos där något körs, med commits eller ändringar de senaste 3 dagarna, eller med öppna PR:er.</dd>
   <dt><span class="seg"><button>Inaktiva</button></span></dt><dd>Repos utan aktivitet de senaste 3 dagarna. Blir ett repo aktivt igen flyttas det automatiskt till Aktiva.</dd>
-  <dt><span class="seg"><button>Arkiv</button></span></dt><dd>Repos du har arkiverat. Börjar något köras i ett arkiverat repo visas det ändå under Aktiva, med märket <span class="badge">arkiverat</span>.</dd>
+  <dt><span class="seg"><button>Arkiv</button></span></dt><dd>Repos du har arkiverat. De ligger alltid här, även om något körs i dem; då visar verktygsraden hur många arkiverade repos som har något igång.</dd>
   <dt>Filterrutan</dt><dd>Filtrerar på repo- eller branchnamn inom vyn.</dd>
 </dl>
 
@@ -417,13 +417,13 @@ function containerChips(names) {
 const ctChip = name => `<span class="chip ct" data-ct="${esc(name)}" title="Visa loggar">🐳 ${esc(name)}</span>`;
 
 // ---------- översikt ----------
-// Vilken vy ett repo hör till. Ett arkiverat repo där något körs visas ändå bland de aktiva.
-const repoGroup = r => r.archived && !r.busy ? "archive" : r.active ? "active" : "inactive";
+// Vilken vy ett repo hör till. Arkiverat ligger alltid i Arkiv, även om något körs i det.
+const repoGroup = r => r.archived ? "archive" : r.active ? "active" : "inactive";
 const VIEWS = [["active", "Aktiva"], ["inactive", "Inaktiva"], ["archive", "Arkiv"]];
 const VIEW_HINT = {
   active: "Repos där något körs, med commits eller ändringar de senaste 3 dagarna, eller med öppna PR:er.",
   inactive: "Repos utan aktivitet de senaste 3 dagarna. Arkivera dem du inte jobbar med så hålls listan kort.",
-  archive: "Arkiverade repos. Inget i repot ändras; de döljs bara här och i devctl status.",
+  archive: "Arkiverade repos. Inget i repot ändras; de döljs bara i översikten och i devctl status. Servrar som körs syns fortfarande under Servrar.",
 };
 
 function renderOverview(v) {
@@ -439,7 +439,9 @@ function renderOverview(v) {
   v.innerHTML = `<div class="toolbar">
       <span class="seg">${VIEWS.map(([k, l]) => `<button data-rview="${k}" class="${view === k ? "on" : ""}">${l} <span class="muted">${count(k)}</span></button>`).join("")}</span>
       <input type="search" id="q" placeholder="Filtrera repo eller branch…" value="${esc(opts.q || "")}">
-      <span class="spacer"></span><span class="muted small">${VIEW_HINT[view]}</span>
+      <span class="spacer"></span>
+      ${(n => n && view !== "archive" ? `<span class="badge warn" style="cursor:pointer" data-rview="archive" title="Arkiverade repos där servrar, panes eller containrar körs">${n} arkiverat repo${n > 1 ? "s" : ""} har något igång</span>` : "")(S.repos.filter(r => r.archived && r.busy).length)}
+      <span class="muted small">${VIEW_HINT[view]}</span>
     </div>` + (repos.length ? repos.map(repoCard).join("") : `<div class="empty">${q ? "Inga repos matchar filtret." : empty}</div>`);
 }
 
@@ -449,7 +451,7 @@ function repoCard(r) {
   return `<div class="card">
     <div class="chead">
       <span class="cname">${esc(r.name)}</span>
-      ${r.archived ? `<span class="badge" title="Arkiverat, men visas eftersom något körs i det">arkiverat</span>` : ""}
+      ${r.archived && r.busy ? `<span class="badge warn" title="Arkiverat, men något körs i det">igång</span>` : ""}
       ${r.github ? `<a class="small" href="https://github.com/${esc(r.github)}" target="_blank" rel="noopener">${esc(r.github)} ↗</a>` : `<span class="muted small">ingen GitHub-remote</span>`}
       ${r.prs.length ? `<a class="badge pr" href="https://github.com/${esc(r.github)}/pulls" target="_blank" rel="noopener">${r.prs.length} öppna PR</a>` : ""}
       ${r.parked ? `<span class="badge warn" style="cursor:pointer" data-act="parked" data-repo="${esc(r.path)}" title="Frågor och önskemål som parkerades medan Claude jobbade med annat. Klicka för att öppna listan i Obsidian.">📌 ${r.parked} parkerade</span>` : ""}

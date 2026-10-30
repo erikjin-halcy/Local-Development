@@ -211,8 +211,8 @@ Inget av ditt eget sparas i repot, så samma kod fungerar för alla.
 
 Översikten visar som standard bara **aktiva** repos: där något körs, med commits eller ändringar
 de senaste 3 dagarna, eller med öppna PR:er. **Inaktiva** är resten. **Arkivera** gömmer ett repo
-(sparas i `~/.config/devctl/archive.json`, inget i repot ändras). Börjar något köras i ett arkiverat
-repo visas det ändå bland de aktiva. Knappen **?** i appen förklarar alla fält och knappar.
+(sparas i `~/.config/devctl/archive.json`, inget i repot ändras). Arkiverade repos ligger alltid i Arkiv;
+har ett sådant något igång visar översikten det i verktygsraden. Knappen **?** i appen förklarar alla fält och knappar.
 
 ## Hur det fungerar
 

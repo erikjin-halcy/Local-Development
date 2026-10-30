@@ -421,7 +421,7 @@ func printStatus(s state.Snapshot, all bool) {
 	fmt.Println()
 	hidden := 0
 	for _, r := range s.Repos {
-		if (!r.Active || (r.Archived && !r.Busy)) && !all {
+		if (!r.Active || r.Archived) && !all {
 			hidden++
 			continue
 		}
