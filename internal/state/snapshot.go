@@ -82,10 +82,15 @@ func (c *Collector) RefreshNow() Snapshot {
 	return c.Snapshot()
 }
 
+// Start läser in läget i bakgrunden så att servern kan svara direkt; första ögonblicksbilden
+// (tmux, servrar, Docker) kommer inom någon sekund och git-informationen strax efter.
 func (c *Collector) Start() {
-	c.discover()
-	c.refreshGit()
-	c.refreshFast()
+	go func() {
+		c.refreshFast()
+		c.discover()
+		c.refreshGit()
+		c.refreshFast()
+	}()
 	go c.loop(2*time.Second, c.fastKick, c.refreshFast)
 	go c.loop(10*time.Second, c.gitKick, func() { c.refreshGit(); c.refreshFast() })
 	go c.loop(2*time.Minute, nil, c.discover)

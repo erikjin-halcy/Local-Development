@@ -1,0 +1,37 @@
+# Bygger Devctl.app och CLI:t när en version taggas (git tag v0.1.0 && git push --tags)
+# och lägger dem som nedladdningar under GitHub Releases.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Test
+        run: go vet ./... && go test ./...
+      - name: Bygg appen
+        run: desktop/macos/build.sh "${GITHUB_REF_NAME}"
+      - name: Packa
+        run: |
+          mkdir -p out
+          ditto -c -k --keepParent dist/Devctl.app "out/Devctl-${GITHUB_REF_NAME}-macos.zip"
+          cp dist/Devctl.app/Contents/Resources/devctl out/devctl
+          tar -czf "out/devctl-${GITHUB_REF_NAME}-macos-universal.tar.gz" -C out devctl
+          rm out/devctl
+          (cd out && shasum -a 256 * > SHA256SUMS)
+      - name: Publicera release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" out/* --title "devctl ${GITHUB_REF_NAME}" --generate-notes

@@ -19,11 +19,30 @@ jobbar med just nu:
 
 Allt körs lokalt. Servern lyssnar bara på `127.0.0.1` och avvisar anrop från andra webbplatser.
 
-## Installera
+## Desktop-app (macOS)
+
+`Devctl.app` är ett vanligt Mac-program: öppna det så ser du direkt alla repos, worktrees,
+tmux-panes, servrar och containrar. Appen innehåller `devctl` och startar servern själv om den
+inte redan körs (och stänger den när du avslutar, om appen startade den). Länkar till GitHub
+och Obsidian öppnas i respektive program. ⌘1–⌘5 byter flik, ⌘R laddar om.
+
+```bash
+make install-app     # bygger dist/Devctl.app, kopierar till /Applications och installerar CLI:t
+```
+
+**Ladda ned färdigbyggd:** under [Releases](https://github.com/erikjin-halcy/Local-Development/releases)
+finns `Devctl-<version>-macos.zip` (appen) och `devctl-<version>-macos-universal.tar.gz` (bara CLI:t),
+byggda för både Apple Silicon och Intel. Appen är inte signerad med ett Developer ID, så första
+gången: högerklicka → Öppna, eller kör `xattr -dr com.apple.quarantine /Applications/Devctl.app`.
+
+En ny release skapas genom att tagga en version: `git tag v0.2.0 && git push --tags`.
+
+## Installera CLI:t från källkod
 
 Kräver Go 1.24+, `git` och `tmux`. Valfritt: `gh` (PR:er), `docker`/OrbStack, Obsidian, Claude Code.
 
 ```bash
+go install github.com/erikjin-halcy/Local-Development/cmd/devctl@latest   # eller:
 make install         # bygger till ~/.local/bin/devctl
 devctl               # startar servern och öppnar http://localhost:7878
 devctl autostart     # starta vid inloggning (--remove för att ta bort)
@@ -80,6 +99,7 @@ för agenter. Den globala orkestratorn styr allt genom dem.
 ## Hur det fungerar
 
 ```
+desktop/macos (Devctl.app, Swift/WKWebView) ─┐
 web/index.html (inbäddad)  ──/api──►  internal/server
                                          ├─ internal/state    läser: tmux, git, gh, lsof/ps, docker
                                          └─ internal/control  gör: tmux, worktrees, docker, Obsidian, orkestrator
