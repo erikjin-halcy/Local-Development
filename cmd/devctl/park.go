@@ -9,74 +9,81 @@ import (
 	"time"
 
 	"github.com/erikjin-halcy/Local-Development/internal/config"
-	"github.com/erikjin-halcy/Local-Development/internal/state"
 	"github.com/erikjin-halcy/Local-Development/internal/sysx"
 )
 
-// parkTarget väljer listan: --repo, annars repot som den aktuella katalogen ligger i, annars den allmänna.
-func parkTarget(cfg config.Config, flags map[string]string) (name, path string) {
-	name = flags["repo"]
-	if name == "" {
-		dir, _ := os.Getwd()
-		if out, err := sysx.RunIn(dir, 5*time.Second, "git", "rev-parse", "--path-format=absolute", "--git-common-dir"); err == nil {
-			common := strings.TrimSpace(out)
-			if filepath.Base(common) == ".git" {
-				name = filepath.Base(filepath.Dir(common))
-			}
+// currentRepo: --repo, annars repot som den aktuella katalogen ligger i ("" utanför repos).
+func currentRepo(flags map[string]string) string {
+	if r := flags["repo"]; r != "" {
+		return r
+	}
+	dir, _ := os.Getwd()
+	if out, err := sysx.RunIn(dir, 5*time.Second, "git", "rev-parse", "--path-format=absolute", "--git-common-dir"); err == nil {
+		if common := strings.TrimSpace(out); filepath.Base(common) == ".git" {
+			return filepath.Base(filepath.Dir(common))
 		}
 	}
-	if name == "" {
-		return "Allmänt", config.ParkFile(cfg, "")
-	}
-	return name, config.ParkFile(cfg, state.RepoDir(cfg, name))
+	return ""
 }
 
-// park: devctl park "<text>" | park list [--all] | park done <id> | park open <id>   (alla tar --repo)
-func park(cfg config.Config, pos []string, flags map[string]string) {
-	name, path := parkTarget(cfg, flags)
-	sub := ""
-	if len(pos) > 0 {
-		sub = pos[0]
+// todo: devctl todo add "<titel>" [--repo r] [--context "…"] [--background "…"] [--from "…"]
+//
+//	devctl todo [list] [--all] | done|start|open <id>
+//
+// devctl park "<text>" är samma sak som todo add (för skillen parkera).
+func todo(cfg config.Config, pos []string, flags map[string]string, park bool) {
+	sub := "list"
+	if park {
+		sub = "add"
+		if len(pos) > 0 && (pos[0] == "list" || pos[0] == "done" || pos[0] == "open" || pos[0] == "start") {
+			sub, pos = pos[0], pos[1:]
+		}
+	} else if len(pos) > 0 {
+		sub, pos = pos[0], pos[1:]
 	}
 	switch sub {
-	case "", "list":
-		items, err := config.ReadParked(path)
-		must(err)
+	case "list", "ls":
 		_, all := flags["all"]
+		repo := flags["repo"]
 		n := 0
-		for _, it := range items {
-			if it.Done && !all {
+		for _, t := range config.Todos(cfg) {
+			if (t.Status == "klar" && !all) || (repo != "" && !strings.EqualFold(t.Repo, repo)) {
 				continue
 			}
 			n++
-			box := "[ ]"
-			if it.Done {
-				box = "[x]"
+			box := map[string]string{"öppen": "[ ]", "pågår": "[/]", "klar": "[x]"}[t.Status]
+			r := ""
+			if t.Repo != "" {
+				r = " · " + t.Repo
 			}
-			from := ""
-			if it.From != "" {
-				from = " (från " + it.From + ")"
-			}
-			fmt.Printf("%s %s  %s · %s%s\n", box, it.ID, it.Date, it.Text, from)
+			fmt.Printf("%s %s  %s%s · %s\n", box, t.ID, t.Title, r, t.Created)
 		}
 		if n == 0 {
-			fmt.Printf("Inget parkerat för %s.\n", name)
+			fmt.Println("Inget att göra.")
 		} else {
-			fmt.Printf("\n%d för %s · %s\n", n, name, path)
+			fmt.Printf("\n%d · %s\n", n, config.TodoIndex(cfg))
 		}
-	case "done", "undo", "open":
-		if len(pos) < 2 {
-			fail(errors.New("användning: devctl park done <id>"))
+	case "add":
+		title := strings.Join(pos, " ")
+		if strings.TrimSpace(title) == "" {
+			fail(errors.New(`användning: devctl todo add "<titel>" [--context "…"] [--background "…"] [--repo r]`))
 		}
-		must(config.SetParkedDone(path, pos[1], sub == "done"))
-		fmt.Printf("%s: %s\n", map[bool]string{true: "avbockad", false: "öppen igen"}[sub == "done"], pos[1])
-	default:
-		text := strings.Join(pos, " ")
-		if sub == "add" {
-			text = strings.Join(pos[1:], " ")
+		src := flags["from"]
+		if src == "" {
+			src = "devctl"
 		}
-		it, err := config.AddParked(path, name, text, flags["from"])
+		t, err := config.AddTodo(cfg, title, currentRepo(flags), flags["context"], flags["background"], src)
 		must(err)
-		fmt.Printf("Parkerat för %s: %s (id %s)\n", name, it.Text, it.ID)
+		fmt.Printf("Tillagt i To do: %s (id %s)\n%s\n", t.Title, t.ID, t.File)
+	case "done", "start", "open", "reopen":
+		if len(pos) < 1 {
+			fail(fmt.Errorf("användning: devctl todo %s <id>", sub))
+		}
+		status := map[string]string{"done": "klar", "start": "pågår", "open": "öppen", "reopen": "öppen"}[sub]
+		t, err := config.SetTodoStatus(cfg, pos[0], status)
+		must(err)
+		fmt.Printf("%s: %s\n", t.Title, status)
+	default:
+		fail(fmt.Errorf("okänt: devctl todo %s (list, add, start, done, open)", sub))
 	}
 }

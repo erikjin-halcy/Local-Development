@@ -84,7 +84,7 @@ type Repo struct {
 	PRs      []PR               `json:"prs"`
 	Active   bool               `json:"active"`
 	Archived bool               `json:"archived"`
-	// Öppna parkerade frågor/önskemål (devctl park)
+	// Öppna uppgifter i To do för repot (devctl todo / park)
 	Parked int `json:"parked"`
 	// Busy: något körs i repot (panes, servrar eller containrar)
 	Busy     bool   `json:"busy"`

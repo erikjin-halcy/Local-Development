@@ -102,15 +102,9 @@ func (c *Controller) cloudSummary() map[string]any {
 	out["findings"] = findings
 
 	var parked []any
-	for _, r := range snap.Repos {
-		if r.Parked == 0 {
-			continue
-		}
-		items, _ := config.ReadParked(config.ParkFile(c.cfg, state.RepoDir(c.cfg, r.Name)))
-		for _, it := range items {
-			if !it.Done {
-				parked = append(parked, map[string]any{"repo": r.Name, "text": clip(it.Text, 200), "date": it.Date})
-			}
+	for _, t := range config.Todos(c.cfg) {
+		if t.Status != "klar" {
+			parked = append(parked, map[string]any{"repo": t.Repo, "text": clip(t.Title, 200), "date": t.Created, "status": t.Status})
 		}
 	}
 	out["parked"] = parked

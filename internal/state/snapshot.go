@@ -200,6 +200,7 @@ func (c *Collector) refreshGit() {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	fresh := map[string]*Repo{}
+	todoCounts := config.OpenTodos(c.cfg)
 	for _, common := range commons {
 		if _, err := os.Stat(common); err != nil {
 			continue
@@ -216,7 +217,7 @@ func (c *Collector) refreshGit() {
 				wfs, _ := config.RepoWorkflows(r.Name)
 				r.Workflows = Workflows(wfs)
 				r.Dispatch = dispatchWorkflows(r.Worktrees[0].Path)
-				r.Parked = config.OpenParked(config.ParkFile(c.cfg, RepoDir(c.cfg, r.Name)))
+				r.Parked = todoCounts[r.Name]
 			}
 			mu.Lock()
 			fresh[common] = r

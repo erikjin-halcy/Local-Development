@@ -46,6 +46,17 @@ func Run(cfg config.Config) error {
 	ctl.StartAgentScheduler()
 	ctl.AutoReloadOrchestrator()
 	ctl.StartCloudSync()
+	// To do: avbockningar i Obsidian förs över till sidorna och listan hålls aktuell
+	if cfg.Obsidian.Vault != "" {
+		go func() {
+			for {
+				if err := config.SyncTodos(cfg); err != nil {
+					log.Println("to do:", err)
+				}
+				time.Sleep(time.Minute)
+			}
+		}()
+	}
 
 	// Repo-mapparna i Obsidian hålls aktuella: kort efter start och sedan var 10:e minut
 	if cfg.Obsidian.Vault != "" {

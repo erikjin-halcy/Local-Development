@@ -45,8 +45,9 @@ const usage = `devctl – kontrollpanel för lokalt utvecklingsarbete
   devctl note <repo> <branch> [--open]   branchens anteckning i Obsidian
   devctl log [--open]            uppdatera dagens utvecklingslogg i Obsidian
   devctl automation [kommando] [arg]   Local-Automation: veckoarkiv, synk, deploy, inloggningar, tjänster
-  devctl park "<text>" [--repo r] [--from s]   kom ihåg en fråga eller ett önskemål till senare
-  devctl park list [--all] | park done <id>    parkerat för repot du står i (eller --repo)
+  devctl todo add "<titel>" [--context "…"] [--background "…"] [--repo r]   ny uppgift med egen sida i Obsidian
+  devctl todo [list] [--all] [--repo r] | todo start|done|open <id>          To do-listan
+  devctl park "<titel>" …        samma som todo add (används av skillen parkera)
   devctl agents [list] | run <namn> [--repo r] | findings [namn] | resolve|ignore <id>   agenter i devctl
   devctl orchestrator [--reload] starta (eller visa) den globala orkestratorn; --reload laddar nya instruktioner
   devctl brief                  orkestratorns systemprompt
@@ -228,8 +229,10 @@ func main() {
 		}
 	case "agents", "agent":
 		agentsCmd(c, pos, flags)
+	case "todo":
+		todo(cfg, pos, flags, false)
 	case "park":
-		park(cfg, pos, flags)
+		todo(cfg, pos, flags, true)
 	case "orchestrator":
 		if _, reload := flags["reload"]; reload {
 			res, err := c.do("orchestrator_reload", nil)
@@ -280,6 +283,7 @@ func parse(args []string) ([]string, map[string]string) {
 	var pos []string
 	flags := map[string]string{}
 	boolean := map[string]bool{"json": true, "all": true, "force": true, "open": true, "remove": true, "yes": true, "reload": true}
+	// (--context, --background och --from tar värden)
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		if strings.HasPrefix(a, "-") && len(a) > 1 && !strings.HasPrefix(a, "-%") {
@@ -508,7 +512,7 @@ func printStatus(s state.Snapshot, all bool) {
 			extra += fmt.Sprintf(" · %d öppna PR", len(r.PRs))
 		}
 		if r.Parked > 0 {
-			extra += fmt.Sprintf(" · 📌 %d parkerade (devctl park list --repo %q)", r.Parked, r.Name)
+			extra += fmt.Sprintf(" · 📌 %d att göra (devctl todo list --repo %q)", r.Parked, r.Name)
 		}
 		fmt.Printf("■ %s  %s%s\n", r.Name, short(r.Path), extra)
 		for _, wt := range r.Worktrees {

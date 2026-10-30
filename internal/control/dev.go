@@ -613,9 +613,9 @@ föreslå åtgärd. Ändra ingen kod utan godkännande. Markera med `+"`devctl a
 - `+"`devctl note <repo> <branch>`"+` – skapar branchens anteckning i Obsidian och skriver ut sökvägen;
   läs och skriv sedan filen direkt (mål, beslut, status).
 - `+"`devctl log`"+` – uppdaterar dagens utvecklingslogg i Obsidian.
-- `+"`devctl park \"<text>\" --repo <repo>`"+` – parkera en fråga eller ett önskemål som kommer upp
-  medan du jobbar med annat; `+"`devctl park list`"+` och `+"`devctl park done <id>`"+`. Ta upp det
-  parkerade när du är klar med en uppgift.
+- `+"`devctl todo add \"<titel>\" --repo <repo> --context \"…\" --background \"…\"`"+` – en uppgift i To do-listan i
+  Obsidian, med en egen sida som beskriver vad som ska göras och varför; `+"`devctl todo list`"+`,
+  `+"`devctl todo start|done <id>`"+`. Använd för frågor och önskemål som inte kan tas direkt.
 
 ## Obsidian
 - Arbetsvalv: %s. Varje repo har en mapp %s/<repo>/ med startsidan <repo>.md och
@@ -888,7 +888,7 @@ func repoSection(cfg config.Config, r state.Repo) string {
 	if d := claudeDir(cfg, r.Name); d != "" {
 		b.WriteString("\n## Claude\n- [[" + r.Name + "/Claude/CLAUDE|Personliga instruktioner (CLAUDE.md)]]: läses in av Claude Code i repots worktrees\n")
 		if r.Parked > 0 {
-			fmt.Fprintf(&b, "- [[%s/Claude/Parkerat|📌 %d parkerade frågor och önskemål]]\n", r.Name, r.Parked)
+			fmt.Fprintf(&b, "- [[To do|📌 %d att göra]]\n", r.Parked)
 		}
 		for _, f := range recentSessions(cfg, r.Name, 5) {
 			name := strings.TrimSuffix(filepath.Base(f), ".md")
@@ -980,16 +980,12 @@ func (c *Controller) killProcesses(a Args) (any, error) {
 	return map[string]int{"stopped": stopped}, nil
 }
 
-// openParked öppnar repots lista med parkerade frågor i Obsidian.
+// openParked öppnar To do-listan i Obsidian.
 func (c *Controller) openParked(a Args) (any, error) {
-	r, err := FindRepo(c.col.Snapshot(), a.S("repo"))
-	if err != nil {
+	if err := config.SyncTodos(c.cfg); err != nil {
 		return nil, err
 	}
-	path := config.ParkFile(c.cfg, state.RepoDir(c.cfg, r.Name))
-	if _, err := os.Stat(path); err != nil {
-		return nil, fmt.Errorf("inget parkerat för %s", r.Name)
-	}
+	path := config.TodoIndex(c.cfg)
 	return map[string]string{"path": path}, openInObsidian(path)
 }
 
