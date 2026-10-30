@@ -389,6 +389,10 @@ func (c *Collector) refreshFast() {
 		if m := match(s.Cwd); m != nil {
 			ref := m.ref
 			s.Worktree = &ref
+		} else if m := matchCommand(idx, s.Command); m != nil {
+			// T.ex. en tjänst som macOS startar från / men vars skript ligger i ett repo
+			ref := m.ref
+			s.Worktree = &ref
 		} else if s.Cwd != "" && s.Cwd != "/" && strings.HasPrefix(s.Cwd, "/Users/") {
 			unknown = append(unknown, s.Cwd)
 		}
@@ -532,4 +536,14 @@ func (c *Collector) hasAccessError() bool {
 		}
 	}
 	return false
+}
+
+// matchCommand hittar den worktree (längst sökväg först) som processens kommando pekar in i.
+func matchCommand(idx []wtIndex, command string) *wtIndex {
+	for i := range idx {
+		if idx[i].path != "" && strings.Contains(command, idx[i].path+"/") {
+			return &idx[i]
+		}
+	}
+	return nil
 }
