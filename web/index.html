@@ -62,7 +62,7 @@ main.inspecting { grid-template-columns: minmax(0, 1fr) 460px; }
 .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .chip { display: inline-block; vertical-align: middle; line-height: 18px; font: 11.5px/18px var(--mono); padding: 1px 7px; border-radius: 5px; background: var(--panel2); border: 1px solid var(--line); cursor: pointer; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .chip:hover { border-color: var(--accent); }
-.chip.pane { border-left: 3px solid var(--accent); } .chip.srv { border-left: 3px solid var(--be); }
+.chip.pchip { border-left: 3px solid var(--accent); } .chip.srv { border-left: 3px solid var(--be); }
 .chip.srv.frontend { border-left-color: var(--fe); } .chip.srv.database { border-left-color: var(--db); }
 .chip.ct { border-left: 3px solid var(--dk); }
 .chip.orchp { border-left-color: var(--orch); }
@@ -266,7 +266,7 @@ dialog#help { width: min(860px, 94vw); max-height: 88vh; }
 
 <h4>Vad som körs (chipsen)</h4>
 <dl>
-  <dt><span class="chip pane">▣ zsh · devctl:0</span></dt><dd>En tmux-pane som står i worktreen: programmet som körs i den (zsh = ett vanligt skal, 2.1.314 = Claude Code) och tmux-session:fönster. Klicka för att se vad den visar och skriva till den.</dd>
+  <dt><span class="chip pchip">▣ zsh · devctl:0</span></dt><dd>En tmux-pane som står i worktreen: programmet som körs i den (zsh = ett vanligt skal, 2.1.314 = Claude Code) och tmux-session:fönster. Klicka för att se vad den visar och skriva till den.</dd>
   <dt><span class="chip srv frontend">:8080 frontend</span></dt><dd>En lokal server som startats från worktreen: port och typ (grön frontend, lila mobil/Metro, orange backend, blå databas, turkos Docker). Klicka för att öppna den i webbläsaren.</dd>
   <dt><span class="chip srv">Python · 12 processer · 67 portar</span></dt><dd>Många portar från samma program (t.ex. Jupyter-kärnor), ihopslagna. Klicka för att se dem i Servrar.</dd>
   <dt><span class="chip ct">🐳 supabase · …</span></dt><dd>Docker/OrbStack-containrar vars projekt ligger i worktreen. Klicka för loggar, eller fliken Docker för alla.</dd>
@@ -390,7 +390,7 @@ function renderBanner() {
 function paneChip(id) {
   const x = findPane(id); if (!x) return "";
   const orch = x.w.kind === "global-orchestrator" || x.p.role === "orchestrator";
-  return `<span class="chip pane ${orch ? "orchp" : ""}" data-pane="${esc(id)}" title="tmux-pane ${esc(id)} i ${esc(x.s.name)}:${x.w.index} (${esc(x.w.name)}) kör ${esc(x.p.command)}${x.p.title && x.p.title !== hostname() ? " · " + esc(x.p.title) : ""}. Klicka för att se och skriva i den.">▣ ${esc(x.p.command)} · ${esc(x.s.name)}:${x.w.index}</span>`;
+  return `<span class="chip pchip ${orch ? "orchp" : ""}" data-pane="${esc(id)}" title="tmux-pane ${esc(id)} i ${esc(x.s.name)}:${x.w.index} (${esc(x.w.name)}) kör ${esc(x.p.command)}${x.p.title && x.p.title !== hostname() ? " · " + esc(x.p.title) : ""}. Klicka för att se och skriva i den.">▣ ${esc(x.p.command)} · ${esc(x.s.name)}:${x.w.index}</span>`;
 }
 function serverChip(port) {
   const s = serverByPort(port); if (!s) return "";
@@ -720,7 +720,7 @@ function renderWorkers(workers) {
   const el = $("#workers"); if (!el) return;
   el.style.display = workers.length ? "" : "none";
   el.innerHTML = workers.length ? `<span class="muted small">Workers:</span>` + workers.map(({ w, p }) =>
-    `<span class="chip pane" data-pane="${esc(p.id)}" title="${esc(paneLabel(p))}">⚙ ${esc(w.name)}${p.worktree ? ` <span class="muted">⎇ ${esc(p.worktree.branch)}</span>` : ""}</span>`).join("") : "";
+    `<span class="chip pchip" data-pane="${esc(p.id)}" title="${esc(paneLabel(p))}">⚙ ${esc(w.name)}${p.worktree ? ` <span class="muted">⎇ ${esc(p.worktree.branch)}</span>` : ""}</span>`).join("") : "";
 }
 
 // Gör om Claude Codes terminalbild till ett samtal: dina meddelanden, svaren och verktygsanrop.
