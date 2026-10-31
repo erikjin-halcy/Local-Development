@@ -2,6 +2,7 @@
 package control
 
 import (
+	"crypto/sha1"
 	"errors"
 	"fmt"
 	"os"
@@ -389,7 +390,15 @@ func (c *Controller) capture(a Args) (any, error) {
 		return nil, err
 	}
 	text, err := Capture(a.S("pane"), a.I("lines", 200))
-	return map[string]string{"text": text}, err
+	if err != nil {
+		return nil, err
+	}
+	// Sidan skickar med summan av det den redan visar; är panen oförändrad slipper den texten
+	sum := fmt.Sprintf("%x", sha1.Sum([]byte(text)))
+	if a.S("since") == sum {
+		return map[string]any{"same": true, "sum": sum}, nil
+	}
+	return map[string]any{"text": text, "sum": sum}, nil
 }
 
 func (c *Controller) attach(a Args) (any, error) {

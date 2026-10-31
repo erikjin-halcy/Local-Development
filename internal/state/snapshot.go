@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/erikjin-halcy/Local-Development/internal/config"
@@ -34,10 +35,13 @@ type Snapshot struct {
 	Errors      map[string]string `json:"errors"`
 }
 
-// Collector håller en färsk ögonblicksbild. tmux, servrar och Docker läses varannan sekund,
+// Collector håller en färsk ögonblicksbild. tmux, servrar och Docker läses var 3:e sekund,
 // git var 10:e sekund, PR:er från GitHub varannan minut och nya repos letas upp varannan minut.
+// När ingen klient har frågat på en stund (se Touch) läses allt mycket glesare.
 type Collector struct {
 	cfg config.Config
+
+	lastSeen atomic.Int64 // unix-nano för senaste anropet från en klient
 
 	mu   sync.RWMutex
 	snap Snapshot
@@ -87,6 +91,25 @@ func (c *Collector) RefreshNow() Snapshot {
 	return c.Snapshot()
 }
 
+// Hur länge en klient räknas som ansluten efter sitt senaste anrop. Sidan frågar minst var 15:e
+// sekund när den syns och slutar helt när fönstret är dolt.
+const clientTimeout = 30 * time.Second
+
+// Touch markerar att en klient (sidan, appen eller CLI:t) använder servern. Kommer den tillbaka
+// efter en paus läses tmux, servrar och git om direkt så att den inte ser gammalt läge.
+func (c *Collector) Touch() {
+	now := time.Now().UnixNano()
+	if prev := c.lastSeen.Swap(now); now-prev > int64(clientTimeout) {
+		c.Refresh(true)
+		c.Refresh(false)
+	}
+}
+
+// Active svarar på om någon klient har frågat nyligen.
+func (c *Collector) Active() bool {
+	return time.Now().UnixNano()-c.lastSeen.Load() < int64(clientTimeout)
+}
+
 // Start läser in läget i bakgrunden så att servern kan svara direkt; första ögonblicksbilden
 // (tmux, servrar, Docker) kommer inom någon sekund och git-informationen strax efter.
 func (c *Collector) Start() {
@@ -96,27 +119,36 @@ func (c *Collector) Start() {
 		c.refreshGit()
 		c.refreshFast()
 	}()
-	go c.loop(2*time.Second, c.fastKick, c.refreshFast)
-	go c.loop(10*time.Second, c.gitKick, func() { c.refreshGit(); c.refreshFast() })
-	go c.loop(time.Minute, nil, func() {
+	// Utan klient räcker det att läget är någon minut gammalt för agenterna, molnsammanfattningen
+	// och orkestratorn; varannan sekund drar ström i onödan (ps, lsof, docker, git i alla repos).
+	go c.loop(3*time.Second, time.Minute, c.fastKick, c.refreshFast)
+	go c.loop(10*time.Second, 5*time.Minute, c.gitKick, func() { c.refreshGit(); c.refreshFast() })
+	go c.loop(time.Minute, 0, nil, func() {
 		if c.repoCount() == 0 || c.hasAccessError() {
 			c.discover()
 			c.refreshGit()
 		}
 	})
-	go c.loop(2*time.Minute, nil, c.discover)
-	go c.loop(2*time.Minute, nil, func() { c.refreshPRs(); c.refreshFast() })
+	go c.loop(2*time.Minute, 10*time.Minute, nil, c.discover)
+	go c.loop(2*time.Minute, 10*time.Minute, nil, func() { c.refreshPRs(); c.refreshFast() })
 	go func() { time.Sleep(2 * time.Second); c.refreshPRs(); c.refreshFast() }()
 }
 
-func (c *Collector) loop(every time.Duration, kick chan struct{}, fn func()) {
+// loop kör fn var every när en klient är ansluten och var idle annars (0 = alltid every).
+// En kick kör fn direkt oavsett.
+func (c *Collector) loop(every, idle time.Duration, kick chan struct{}, fn func()) {
 	t := time.NewTicker(every)
+	last := time.Now()
 	for {
 		select {
 		case <-t.C:
+			if idle > 0 && !c.Active() && time.Since(last) < idle {
+				continue
+			}
 		case <-kick:
 		}
 		fn()
+		last = time.Now()
 	}
 }
 

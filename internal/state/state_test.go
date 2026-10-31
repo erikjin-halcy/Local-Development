@@ -46,7 +46,7 @@ func TestNotePath(t *testing.T) {
 	if got := NotePath(cfg, "repo", "feat/x"); got != "/v/Projekt/repo/Branches/feat ∕ x.md" {
 		t.Errorf("NotePath = %q", got)
 	}
-	if got := RepoNotePath(cfg, "Halcy-app"); got != "/v/Projekt/Halcy-app/Halcy-app.md" {
+	if got := RepoNotePath(cfg, "exempel-repo"); got != "/v/Projekt/exempel-repo/exempel-repo.md" {
 		t.Errorf("RepoNotePath = %q", got)
 	}
 	if NotePath(cfg, "repo", "(abc123)") != "" {

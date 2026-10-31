@@ -50,6 +50,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         DispatchQueue.global().async { self.ensureServer() }
         statusBar = StatusBar(port: port, app: self)
         startWatchdog()
+        // Sidan slutar hämta när fönstret inte syns (minimerat, stängt, appen dold eller helt täckt).
+        // WKWebView säger inte alltid det via document.visibilityState, så skalet meddelar sidan själv.
+        NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: window, queue: .main) { [weak self] _ in
+            self?.tellVisibility()
+        }
+    }
+
+    func tellVisibility() {
+        let visible = window.occlusionState.contains(.visible)
+        webView.evaluateJavaScript("window.devctlShellVisible?.(\(visible))")
     }
 
     /// Visar fönstret, eventuellt på en viss flik.
@@ -233,6 +243,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { webView.reload() }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { tellVisibility() }
 
     // MARK: JavaScript-dialoger
     // WKWebView visar inte alert/confirm/prompt själv; utan dessa svarar confirm() alltid "nej"

@@ -30,8 +30,10 @@ final class StatusBar: NSObject, NSMenuDelegate {
         menu.delegate = self
         menu.autoenablesItems = false
         item.menu = menu
-        timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in self?.fetch() }
-        fetch()
+        // Glest i bakgrunden (bg=1 håller inte servern i full takt); menyn hämtar färskt när den öppnas
+        timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in self?.fetch(background: true) }
+        timer?.tolerance = 10
+        fetch(background: true)
     }
 
     /// Tre panes som i en tmux-layout, ritade som mallbild så att färgen följer menyraden.
@@ -55,8 +57,8 @@ final class StatusBar: NSObject, NSMenuDelegate {
 
     // MARK: data
 
-    func fetch() {
-        var req = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/api/state")!)
+    func fetch(background: Bool = false) {
+        var req = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/api/state" + (background ? "?bg=1" : ""))!)
         req.timeoutInterval = 4
         URLSession.shared.dataTask(with: req) { [weak self] data, _, _ in
             guard let self, let data, let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {

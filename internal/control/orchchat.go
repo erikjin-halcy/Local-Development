@@ -112,6 +112,15 @@ func (c *Controller) orchHistory(a Args) (any, error) {
 	if len(files) == 0 {
 		return map[string]any{"items": []chatItem{}, "status": sess.Status}, nil
 	}
+	// Sidan frågar varannan sekund medan orkestratorn syns; loggen läses bara om när den ändrats
+	key := fmt.Sprint(files[0], fileStamp(files[0]), fileStamp(sentPath()), o.Pane, sess.Status, sess.Name)
+	histMu.Lock()
+	if histKey == key {
+		res := histRes
+		histMu.Unlock()
+		return res, nil
+	}
+	histMu.Unlock()
 	sent := readSent(o.Pane)
 	used := map[int]bool{}
 	var items []chatItem
@@ -228,5 +237,24 @@ func (c *Controller) orchHistory(a Args) (any, error) {
 	if items == nil {
 		items = []chatItem{}
 	}
-	return map[string]any{"items": items, "status": sess.Status, "name": sess.Name}, nil
+	res := map[string]any{"items": items, "status": sess.Status, "name": sess.Name}
+	histMu.Lock()
+	histKey, histRes = key, res
+	histMu.Unlock()
+	return res, nil
+}
+
+var (
+	histMu  sync.Mutex
+	histKey string
+	histRes map[string]any
+)
+
+// fileStamp är storlek och ändringstid, ett billigt sätt att se om en fil har ändrats.
+func fileStamp(path string) string {
+	st, err := os.Stat(path)
+	if err != nil {
+		return ""
+	}
+	return fmt.Sprint(st.Size(), st.ModTime().UnixNano())
 }
