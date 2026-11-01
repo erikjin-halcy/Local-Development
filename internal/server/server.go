@@ -106,6 +106,10 @@ func Run(cfg config.Config) error {
 			writeJSON(w, 403, map[string]string{"error": "forbidden host"})
 			return
 		}
+		// Menyraden i appen frågar med bg=1: den ska inte hålla insamlingen i full takt
+		if r.URL.Query().Get("bg") != "1" {
+			col.Touch()
+		}
 		if r.URL.Query().Get("fresh") == "1" {
 			writeJSON(w, 200, col.RefreshNow())
 			return
@@ -122,6 +126,7 @@ func Run(cfg config.Config) error {
 			writeJSON(w, 400, map[string]string{"error": "ogiltig JSON"})
 			return
 		}
+		col.Touch()
 		name, _ := a["action"].(string)
 		res, err := ctl.Do(strings.TrimSpace(name), a)
 		if err != nil {

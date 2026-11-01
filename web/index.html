@@ -357,6 +357,11 @@ let tab = store.get("tab", "overview");
 let opts = store.get("opts", { inactive: false, apps: false, stopped: false, tmuxView: "map", q: "" });
 const collapsed = new Set();
 let inspect = null; // { kind: "pane", id } | { kind: "text", title, load }
+// Hur ofta panen i inspektören och orkestratorn frågas: tätt efter en ändring, glesare när inget händer
+const LIVE_MIN = 1200, LIVE_MAX = 6000;
+const live = { cur: LIVE_MIN, at: Date.now() + LIVE_MIN };
+// Användaren gjorde något i en pane eller hos orkestratorn: fråga tätt igen
+function wake() { live.cur = LIVE_MIN; live.at = Math.min(live.at, Date.now() + LIVE_MIN); }
 
 const TABS = [["overview", "Översikt"], ["tmux", "tmux"], ["servers", "Servrar"], ["docker", "Docker"], ["orchestrator", "Orkestrator"], ["agents", "Agenter"], ["automation", "Automation"]];
 // Flikar går att länka till: http://localhost:7878/#docker
@@ -368,7 +373,8 @@ async function api(action, data = {}, quiet = false) {
     body: JSON.stringify({ action, ...data }) });
   const j = await r.json().catch(() => ({ error: "oväntat svar" }));
   if (!r.ok) { if (!quiet) toast(j.error || "Fel"); throw new Error(j.error); }
-  setTimeout(refresh, 150);
+  if (!quiet) setTimeout(refresh, 150); // tysta anrop är läsningar som pollas; de ändrar inget läge
+
   return j.result;
 }
 
@@ -385,7 +391,6 @@ async function checkVersion() {
     serverStarted = h.started;
   } catch {}
 }
-setInterval(checkVersion, 3000);
 checkVersion();
 
 async function refresh() {
@@ -941,12 +946,15 @@ function md(t) {
   return out.join("");
 }
 
-let orchRaw = false, orchLast = "";
+let orchRaw = false, orchLast = "", orchSum = "";
 async function loadOrch(scroll) {
-  const box = $("#orchOut"); if (!box || !S.orchestrator) return;
+  const box = $("#orchOut"); if (!box || !S.orchestrator) return false;
+  if (scroll) { wake(); orchSum = ""; }
   try {
-    const r = await api("capture", { pane: S.orchestrator.pane, lines: 1500 }, true);
-    if (orchRaw) { $("#orchTerm").style.display = ""; box.style.display = "none"; return setTerm($("#orchTerm"), r.text, scroll); }
+    const r = await api("capture", { pane: S.orchestrator.pane, lines: 1500, since: orchSum }, true);
+    orchSum = r.sum;
+    if (r.same) return false; // samma skärm: samtalet har inte heller ändrats
+    if (orchRaw) { $("#orchTerm").style.display = ""; box.style.display = "none"; setTerm($("#orchTerm"), r.text, scroll); return true; }
     $("#orchTerm").style.display = "none"; box.style.display = "";
     const { working } = parseClaude(r.text);
     $("#orchStatus").innerHTML = working ? `<span class="dot on"></span> arbetar …` : `<span class="dot"></span> väntar på dig`;
@@ -959,11 +967,12 @@ async function loadOrch(scroll) {
       : x.role === "system" ? `<div class="omsg tool" title="${esc(x.text)}">ⓘ ${esc(x.who)}: ${esc(x.text)}</div>`
       : `<div class="omsg bot"><div class="owho"><b>Orkestratorn</b> · ${esc(x.time)}</div>${md(x.text)}</div>`).join("")
       || `<div class="empty">Inget samtal än. Skriv nedan, t.ex. ”Vad pågår i Halcy-app?”</div>`;
-    if (html === orchLast && !scroll) return;
+    if (html === orchLast && !scroll) return true;
     const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 40;
     orchLast = html; box.innerHTML = html;
     if (scroll || atBottom) box.scrollTop = box.scrollHeight;
-  } catch {}
+    return true;
+  } catch { return false; }
 }
 function setTerm(pre, text, scroll) {
   const atBottom = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 30;
@@ -985,7 +994,6 @@ async function loadAgents(force) {
     if (tab === "agents") renderAgents($("#view"));
   } catch {} finally { agentsLoading = false; }
 }
-setInterval(() => loadAgents(), 10000);
 loadAgents();
 
 const SEV = { "hög": "bad", "medel": "warn", "låg": "" };
@@ -1166,10 +1174,17 @@ function renderInspector() {
   loadPane(true);
 }
 
+let paneSum = "";
 async function loadPane(scroll) {
-  if (inspect?.kind !== "pane") return;
-  const pre = $("#iPre"); if (!pre) return;
-  try { const r = await api("capture", { pane: inspect.id, lines: 300 }, true); setTerm(pre, r.text, scroll); } catch {}
+  if (inspect?.kind !== "pane") return false;
+  const pre = $("#iPre"); if (!pre) return false;
+  if (scroll) { wake(); paneSum = ""; }
+  try {
+    const r = await api("capture", { pane: inspect.id, lines: 300, since: paneSum }, true);
+    paneSum = r.sum;
+    if (r.same) return false;
+    setTerm(pre, r.text, scroll); return true;
+  } catch { return false; }
 }
 const STEP_ICON = { "väntar": "○", "kör": "⏳", "klar": "✓", "misslyckades": "✗", "hoppad": "–" };
 let wfData = null;
@@ -1665,7 +1680,6 @@ async function loadQuickChat() {
     box.scrollTop = box.scrollHeight;
   } catch {}
 }
-setInterval(loadQuickChat, 2000);
 
 async function sendOrch() {
   const i = $("#orchIn"); if (!i || !S.orchestrator || !i.value.trim()) return;
@@ -1684,8 +1698,41 @@ $("#btnLog").onclick = async () => { const r = await api("daily_log", { open: tr
 
 render();
 refresh();
-setInterval(refresh, 2000);
-setInterval(() => { loadPane(false); loadOrch(false); if (inspect?.kind === "workflow" && !["klar", "misslyckades", "avbruten"].includes(wfData?.status)) loadWorkflow(); }, 1200);
+
+// ---------- uppdatering ----------
+// En enda timer för allt som hämtas. Inget hämtas när fönstret är dolt (fliken i bakgrunden, eller
+// appens fönster minimerat, stängt eller täckt; appen meddelar det via devctlShellVisible). När det
+// syns igen hämtas allt direkt. Panes och orkestratorn frågas allt glesare så länge inget ändras.
+const jobs = [
+  { ms: () => 3000, fn: refresh },
+  { ms: () => 15000, fn: checkVersion },
+  { ms: () => 3000, fn: loadQuickChat },
+  { ms: () => tab === "agents" ? 15000 : 60000, fn: () => loadAgents() },
+  Object.assign(live, { ms: () => live.cur, async fn() {
+    const wf = inspect?.kind === "workflow" && !["klar", "misslyckades", "avbruten"].includes(wfData?.status);
+    const changed = (await Promise.all([loadPane(false), loadOrch(false), wf ? loadWorkflow().then(() => true) : false])).some(Boolean);
+    live.cur = changed ? LIVE_MIN : Math.min(LIVE_MAX, Math.round(live.cur * 1.5));
+  } }),
+];
+for (const j of jobs) if (j !== live) j.at = Date.now() + j.ms();
+let shellHidden = false, tickTimer = 0;
+const isHidden = () => document.hidden || shellHidden;
+function tick() {
+  clearTimeout(tickTimer);
+  if (isHidden()) return; // startas igen av visibilitychange eller appen
+  const now = Date.now();
+  for (const j of jobs) if (j.at <= now && !j.busy) {
+    j.busy = true;
+    Promise.resolve().then(() => j.fn.call(j)).catch(() => {})
+      .finally(() => { j.busy = false; j.at = Date.now() + j.ms.call(j); tick(); });
+  }
+  const next = Math.min(now + 60000, ...jobs.filter(j => !j.busy).map(j => j.at));
+  tickTimer = setTimeout(tick, Math.max(200, next - now));
+}
+function onVisible() { if (isHidden()) return; for (const j of jobs) j.at = 0; wake(); tick(); }
+document.addEventListener("visibilitychange", onVisible);
+window.devctlShellVisible = v => { shellHidden = !v; onVisible(); };
+tick();
 </script>
 </body>
 </html>
