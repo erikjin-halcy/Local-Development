@@ -220,6 +220,10 @@ func (c *Collector) refreshGit() {
 				wfs, _ := config.RepoWorkflows(r.Name)
 				r.Workflows = Workflows(wfs)
 				r.Dispatch = dispatchWorkflows(r.Worktrees[0].Path)
+				r.Skills = RepoSkills(r.Worktrees[0].Path)
+				flow, err := config.RepoFlow(r.Name)
+				c.setErr("workflow:"+r.Name, err)
+				r.Flow = flow
 				r.Parked = todoCounts[r.Name]
 				r.Tags = tags[r.Name]
 				if r.Tags == nil {
@@ -316,6 +320,7 @@ func (c *Collector) refreshFast() {
 		cp.Actions = append([]Action{}, r.Actions...)
 		cp.Workflows = append([]Workflow{}, r.Workflows...)
 		cp.Dispatch = append([]DispatchWorkflow{}, r.Dispatch...)
+		cp.Skills = append([]Skill{}, r.Skills...)
 		ciRuns := c.runs[r.GitHub]
 		for i := range cp.Worktrees {
 			cp.Worktrees[i].CI = ciFor(ciRuns, cp.Worktrees[i].Branch)
@@ -344,6 +349,10 @@ func (c *Collector) refreshFast() {
 			wt := &r.Worktrees[wi]
 			wt.Panes, wt.Servers, wt.Containers = []string{}, []int{}, []string{}
 			wt.PR = prByHead[wt.Branch]
+			wt.Stage, wt.Issue = WorktreeStage(*wt, r.Default), ""
+			if r.Flow != nil && r.Flow.Linear != nil {
+				wt.Issue = IssueKey(wt.Branch, r.Flow.Linear.Team)
+			}
 			wt.Note = ""
 			if p := NotePath(c.cfg, r.Name, wt.Branch); p != "" {
 				if _, err := os.Stat(p); err == nil {

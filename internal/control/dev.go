@@ -888,6 +888,34 @@ func (c *Controller) editActions(a Args) (any, error) {
 	return map[string]string{"path": path}, err
 }
 
+// editFlow öppnar repots arbetsflödesfil i editorn och skapar den med en mall (med repots skills) om den saknas.
+func (c *Controller) editFlow(a Args) (any, error) {
+	r, err := FindRepo(c.col.Snapshot(), a.S("repo"))
+	if err != nil {
+		return nil, err
+	}
+	path := config.FlowFile(r.Name)
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		names := []string{}
+		for _, s := range r.Skills {
+			names = append(names, s.Name)
+		}
+		if err := os.MkdirAll(config.FlowsDir(), 0o755); err != nil {
+			return nil, err
+		}
+		if err := os.WriteFile(path, []byte(config.FlowTemplate(r.Name, names)), 0o644); err != nil {
+			return nil, err
+		}
+	}
+	if c.cfg.Editor != "" && sysx.Has(c.cfg.Editor) {
+		_, err = sysx.Run(15*time.Second, c.cfg.Editor, path)
+	} else {
+		_, err = sysx.Run(10*time.Second, "open", "-t", path)
+	}
+	c.col.Refresh(true)
+	return map[string]string{"path": path}, err
+}
+
 // ---------- repo-mappar i Obsidian ----------
 
 const repoStart, repoEnd = "<!-- devctl:repo:start -->", "<!-- devctl:repo:end -->"

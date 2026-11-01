@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/erikjin-halcy/Local-Development/internal/config"
 	"github.com/erikjin-halcy/Local-Development/internal/sysx"
 )
 
@@ -54,6 +55,12 @@ type Worktree struct {
 	Note       string   `json:"note,omitempty"`
 	// Branchen har egna commits och är mergad i huvudbranchen (lokalt eller på origin)
 	Merged bool `json:"merged,omitempty"`
+	// Arbetsflöde: commits som inte finns på huvudbranchen, om branchen har haft egna commits som nu finns där,
+	// läget (se WorktreeStage) och Linear-ärendet ur branchnamnet
+	Base   int    `json:"base"`
+	Landed bool   `json:"landed"`
+	Stage  string `json:"stage,omitempty"`
+	Issue  string `json:"issue,omitempty"`
 }
 
 type Branch struct {
@@ -86,6 +93,9 @@ type Repo struct {
 	Branches  []Branch   `json:"branches"`
 	Actions   []Action   `json:"actions"`
 	Workflows []Workflow `json:"workflows"`
+	// Claude-skills i repot och repots arbetsflöde (nil om ingen arbetsflödesfil finns)
+	Skills []Skill      `json:"skills"`
+	Flow   *config.Flow `json:"flow"`
 	// GitHub Actions-workflows som går att starta för hand
 	Dispatch []DispatchWorkflow `json:"dispatch"`
 	PRs      []PR               `json:"prs"`
@@ -226,6 +236,7 @@ func loadRepo(common string) *Repo {
 	if r.Default == "" && len(r.Worktrees) > 0 {
 		r.Default = r.Worktrees[0].Branch
 	}
+	baseStatus(main, r.Default, r.Worktrees)
 
 	merged := mergedBranches(main, r.Default)
 	for i := range r.Worktrees {
@@ -350,6 +361,49 @@ func worktreeStatus(wt *Worktree) {
 			wt.Last = Commit{Hash: p[0], Subject: p[1], When: p[2], Author: p[3], Unix: int64(atoi(p[4]))}
 		}
 	}
+}
+
+// baseStatus räknar för varje worktree som inte står på huvudbranchen commits som inte finns på huvudbranchen,
+// lokalt eller på origin, och om branchen har haft egna commits som nu finns där (landad).
+func baseStatus(main, def string, wts []Worktree) {
+	var bases []string
+	for _, ref := range []string{"refs/heads/" + def, "refs/remotes/origin/" + def} {
+		if def != "" {
+			if _, err := git(main, "rev-parse", "--verify", "-q", ref); err == nil {
+				bases = append(bases, ref)
+			}
+		}
+	}
+	if len(bases) == 0 {
+		return
+	}
+	var wg sync.WaitGroup
+	for i := range wts {
+		w := &wts[i]
+		if w.Missing || w.Branch == "" || w.Branch == def {
+			continue
+		}
+		wg.Add(1)
+		go func(w *Worktree) {
+			defer wg.Done()
+			args := append([]string{"rev-list", "--count", "refs/heads/" + w.Branch, "--not"}, bases...)
+			if out, err := git(main, args...); err == nil {
+				w.Base = atoi(strings.TrimSpace(out))
+			}
+			if w.Base == 0 {
+				// Har branchen haft egna commits? Reflogen visar commits som gjorts på den.
+				if out, err := git(main, "reflog", "show", "--format=%gs", "refs/heads/"+w.Branch, "--"); err == nil {
+					for _, l := range strings.Split(out, "\n") {
+						if strings.HasPrefix(l, "commit") {
+							w.Landed = true
+							break
+						}
+					}
+				}
+			}
+		}(w)
+	}
+	wg.Wait()
 }
 
 func loadPRs(repo string) ([]PR, error) {
