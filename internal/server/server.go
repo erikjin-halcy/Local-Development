@@ -46,6 +46,7 @@ func Run(cfg config.Config) error {
 	ctl.StartAgentScheduler()
 	ctl.AutoReloadOrchestrator()
 	ctl.StartCloudSync()
+	ctl.StartMetrics()
 	// To do: avbockningar i Obsidian förs över till sidorna och listan hålls aktuell
 	if cfg.Obsidian.Vault != "" {
 		go func() {
