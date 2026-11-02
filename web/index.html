@@ -99,6 +99,27 @@ td.acts button { margin-left: 4px; }
 td.cmd { font: 11.5px var(--mono); color: var(--muted); max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; background: var(--muted); }
 .dot.on { background: var(--ok); } .dot.blue { background: var(--accent); }
+/* Fliken Dator */
+.dgrid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; align-items: start; }
+@media (max-width: 1100px) { .dgrid { grid-template-columns: minmax(0, 1fr); } }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin-bottom: 14px; }
+.tile { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; }
+.tile b { display: block; font: 600 18px var(--mono); } .tile span { color: var(--muted); font-size: 12px; }
+.chart { position: relative; padding: 8px 14px 4px; border-bottom: 1px solid var(--line); }
+.chart:last-child { border-bottom: 0; }
+.chart h3 { font-size: 12px; font-weight: 600; margin: 0 0 4px; display: flex; gap: 10px; align-items: center; color: var(--text); }
+.chart h3 .lg { color: var(--muted); font-weight: 400; display: inline-flex; gap: 4px; align-items: center; }
+.chart h3 .sw { width: 14px; height: 0; border-top: 2px solid; display: inline-block; }
+.chart svg { display: block; width: calc(100% - 64px); height: 90px; overflow: visible; }
+.chart .ax { position: absolute; right: 16px; font-size: 10px; color: var(--muted); font-family: var(--mono); pointer-events: none; }
+.chart .xh { position: absolute; top: 24px; bottom: 4px; width: 0; border-left: 1px solid var(--muted); pointer-events: none; display: none; }
+.xlabels { display: flex; justify-content: space-between; padding: 0 78px 8px 14px; font: 10px var(--mono); color: var(--muted); }
+#dtip { position: fixed; z-index: 30; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 12px; pointer-events: none; display: none; max-width: 340px; box-shadow: 0 6px 20px #0008; }
+#dtip table, .dtop { border-collapse: collapse; width: 100%; }
+#dtip td, .dtop td, .dtop th { padding: 2px 6px 2px 0; vertical-align: top; }
+.dtop th { text-align: left; color: var(--muted); font-weight: 400; font-size: 11px; }
+.dtop td.n, .dtop th.n, #dtip td.n { text-align: right; font-family: var(--mono); white-space: nowrap; }
+.dtop tr + tr td { border-top: 1px solid var(--line); }
 .empty { color: var(--muted); padding: 40px; text-align: center; border: 1px dashed var(--line); border-radius: 10px; }
 aside { position: sticky; top: 64px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; height: calc(100vh - 84px); display: none; flex-direction: column; gap: 10px; }
 main.inspecting aside { display: flex; }
@@ -341,6 +362,7 @@ dialog#help { width: min(860px, 94vw); max-height: 88vh; }
   <div class="qmsgs" id="qchatMsgs"></div>
   <textarea id="qchatIn" rows="2" placeholder="Fråga eller be orkestratorn … (Enter skickar, Esc stänger)"></textarea></div>
 <div id="toast"></div>
+<div id="dtip"></div>
 
 <script>
 const $ = (s, el = document) => el.querySelector(s);
@@ -363,7 +385,7 @@ const live = { cur: LIVE_MIN, at: Date.now() + LIVE_MIN };
 // Användaren gjorde något i en pane eller hos orkestratorn: fråga tätt igen
 function wake() { live.cur = LIVE_MIN; live.at = Math.min(live.at, Date.now() + LIVE_MIN); }
 
-const TABS = [["overview", "Översikt"], ["tmux", "tmux"], ["servers", "Servrar"], ["docker", "Docker"], ["orchestrator", "Orkestrator"], ["agents", "Agenter"], ["automation", "Automation"]];
+const TABS = [["overview", "Översikt"], ["tmux", "tmux"], ["servers", "Servrar"], ["docker", "Docker"], ["orchestrator", "Orkestrator"], ["agents", "Agenter"], ["automation", "Automation"], ["dator", "Dator"]];
 // Flikar går att länka till: http://localhost:7878/#docker
 if (TABS.some(([k]) => k === location.hash.slice(1))) tab = location.hash.slice(1);
 window.addEventListener("hashchange", () => { const h = location.hash.slice(1); if (TABS.some(([k]) => k === h)) { tab = h; render(); } });
@@ -439,7 +461,8 @@ function render() {
   store.set("tab", tab);
   const v = $("#view");
   renderBanner();
-  ({ overview: renderOverview, tmux: renderTmux, servers: renderServers, docker: renderDocker, orchestrator: renderOrch, agents: renderAgents, automation: renderAutomation }[tab] || renderOverview)(v);
+  if (tab !== "dator") { delete v.dataset.key; $("#dtip").style.display = "none"; dPin = null; }
+  ({ overview: renderOverview, tmux: renderTmux, servers: renderServers, docker: renderDocker, orchestrator: renderOrch, agents: renderAgents, automation: renderAutomation, dator: renderDator }[tab] || renderOverview)(v);
   renderInspector();
 }
 
@@ -1073,6 +1096,126 @@ function renderAgents(v) {
 
 // ---------- Local-Automation ----------
 // Local-Automations eget gränssnitt bäddas in; raden ovanför visar status och genvägar.
+
+// ---------- Dator ----------
+// Datorns belastning över tid. Servern mäter en gång i minuten och sparar lokalt i 14 dagar;
+// sidan hämtar när fliken öppnas och sedan varje minut medan den syns.
+let dRange = store.get("dRange", "24h"), dData = null, dPin = null;
+const dProcCache = new Map();
+async function loadDator() {
+  if (tab !== "dator") return;
+  try {
+    const res = await api("metrics", { range: dRange }, true);
+    dData = { ...res, at: Date.now() };
+    if (tab === "dator") renderDator($("#view"), true);
+  } catch {}
+}
+const dSeries = [
+  { id: "cpu", title: "CPU", unit: "%", max: () => 100, lines: [["cpu", "CPU", "var(--accent)"], ["gpu", "GPU", "var(--be)", true]] },
+  { id: "mem", title: "Minne", unit: " GB", max: d => Math.max(d.memTotal || 0, ...d.points.map(p => p.memUsed + 0), ...d.points.map(p => p.swap)), lines: [["memUsed", "använt", "var(--accent)"], ["swap", "swap", "var(--be)", true]] },
+  { id: "free", title: "Minnestryck", unit: " % fritt", max: () => 100, lines: [["memFree", "fritt minne", "var(--accent)"]], bands: p => p.pressure >= 2 },
+  { id: "power", title: "Energipåverkan", unit: "", sparse: true, max: d => Math.max(10, ...d.points.map(p => p.power)), lines: [["power", "de 10 största processerna, mäts var 10:e minut", "var(--accent)"]] },
+  { id: "batt", title: "Batteri", unit: " %", max: () => 100, lines: [["battery", "batteri", "var(--accent)"]], bands: p => p.charging, bandLabel: "laddar" },
+];
+const fmtT = (t, long) => new Date(t * 1000).toLocaleString("sv-SE", long ? { weekday: "short", hour: "2-digit", minute: "2-digit" } : { hour: "2-digit", minute: "2-digit" });
+function renderDator(v, fresh) {
+  if (!dData || dData.loading || dData.range !== dRange) {
+    if (v.dataset.key !== "dator:loading") { v.dataset.key = "dator:loading"; v.innerHTML = `<div class="empty">Laddar mätningarna …</div>`; }
+    if (!dData || !dData.loading) { dData = { loading: true }; loadDator(); }
+    return;
+  }
+  if (v.dataset.key === "dator:" + dData.at && !fresh) return;
+  v.dataset.key = "dator:" + dData.at;
+  const d = dData, pts = d.points || [], now = d.now;
+  const tool = `<div class="toolbar"><div class="tabs">${[["24h", "24 timmar"], ["7d", "7 dagar"]].map(([k, l]) => `<button data-drange="${k}" class="${dRange === k ? "on" : ""}">${l}</button>`).join("")}</div>
+    <span class="muted small">${d.samples ? `${d.samples} mätningar${d.step ? `, medel per ${d.step / 60} min` : ""}. Mäts en gång i minuten och sparas bara på den här datorn, i 14 dagar.` : ""}</span></div>`;
+  if (!pts.length) { v.innerHTML = tool + `<div class="empty">Inga mätningar än. Den första görs inom en minut efter att devctl startat.</div>`; return; }
+  const pr = { 1: "normalt", 2: "förhöjt", 4: "kritiskt" };
+  const tiles = now ? `<div class="tiles">
+    <div class="tile"><b>${now.cpu}%</b><span>CPU · load ${now.load}</span></div>
+    <div class="tile"><b>${now.memUsed}/${now.memTotal} GB</b><span>minne · swap ${now.swap} GB</span></div>
+    <div class="tile"><b>${now.memFree}%</b><span>fritt · tryck ${pr[now.pressure] || "?"}</span></div>
+    <div class="tile"><b>${now.battery < 0 ? "–" : now.battery + "%"}</b><span>${now.battery < 0 ? "inget batteri" : now.charging ? "laddar" : now.ac ? "nätström" : "på batteri"}</span></div>
+    <div class="tile"><b>${now.gpu < 0 ? "–" : now.gpu + "%"}</b><span>GPU</span></div>
+    <div class="tile"><b>${now.thermal ? "⚠" : "ok"}</b><span>${now.thermal ? esc(now.thermal) : "ingen termisk begränsning"}</span></div>
+  </div>` : "";
+  const t0 = dRange === "7d" ? Math.floor(Date.now() / 1000) - 7 * 86400 : Math.floor(Date.now() / 1000) - 86400, t1 = Math.floor(Date.now() / 1000);
+  const X = t => ((t - t0) / (t1 - t0) * 1000).toFixed(1);
+  const maxGap = Math.max(150, (d.step || 60) * 2.5);
+  // Glapp: datorn sov, var avstängd eller devctl kördes inte
+  const gaps = (d.gaps || []).map(([a, b]) => `<rect x="${X(a)}" y="0" width="${Math.max(1, X(b) - X(a))}" height="100" fill="url(#hatch)"><title>Inga mätningar ${fmtT(a, true)}–${fmtT(b, true)}: viloläge eller avstängd</title></rect>`).join("");
+  const charts = dSeries.map(c => {
+    const max = c.max(d) || 1, Y = val => (100 - Math.min(100, val / max * 100)).toFixed(1);
+    const bands = c.bands ? pts.filter(c.bands).map(p => `<rect x="${X(p.t)}" y="0" width="${(1000 * (d.step || 60) / (t1 - t0)).toFixed(2)}" height="100" fill="${c.id === "free" ? "var(--warn)" : "var(--ok)"}" opacity=".18"/>`).join("") : "";
+    const paths = c.lines.map(([k, , color, dash]) => {
+      let dd = "", prev = null;
+      // Energin mäts var 10:e minut: hoppa över punkter utan den, men bryt linjen vid viloläge
+      const gap = c.sparse ? Math.max(maxGap, 1500) : maxGap;
+      for (const p of pts) { if (p[k] < 0) { if (!c.sparse) prev = null; continue; } dd += `${prev && p.t - prev.t <= gap ? "L" : "M"}${X(p.t)},${Y(p[k])}`; prev = p; }
+      return `<path d="${dd}" fill="none" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round" ${dash ? 'stroke-dasharray="4 3"' : ""}/>`;
+    }).join("");
+    const legend = c.lines.length > 1 || c.bands || c.sparse ? c.lines.map(([, l, color, dash]) => `<span class="lg"><span class="sw" style="border-color:${color};${dash ? "border-top-style:dashed" : ""}"></span>${esc(l)}</span>`).join("")
+      + (c.bands ? `<span class="lg"><span class="sw" style="border-top:8px solid ${c.id === "free" ? "var(--warn)" : "var(--ok)"};opacity:.4"></span>${c.bandLabel || "förhöjt tryck"}</span>` : "") : "";
+    return `<div class="chart" data-chart="${c.id}"><h3>${c.title}${legend}</h3>
+      <span class="ax" style="top:24px">${Math.round(max)}${c.unit}</span><span class="ax" style="bottom:4px">0</span>
+      <svg viewBox="0 0 1000 100" preserveAspectRatio="none"><line x1="0" y1="100" x2="1000" y2="100" stroke="var(--line)" vector-effect="non-scaling-stroke"/>${gaps}${bands}${paths}</svg><div class="xh"></div></div>`;
+  }).join("");
+  const ticks = [0, .25, .5, .75, 1].map(f => `<span>${fmtT(t0 + f * (t1 - t0), dRange === "7d")}</span>`).join("");
+  const top = (d.top || []).map((p, i) => `<tr><td class="muted">${i + 1}</td><td><b>${esc(p.name)}</b>${p.where ? `<div class="small muted">${esc(p.where)}</div>` : ""}</td>
+    <td class="n">${p.cpu}%</td><td class="n">${p.power < 0 ? "–" : p.power}</td><td class="n">${Math.round(100 * p.seen / d.samples)}%</td></tr>`).join("");
+  v.innerHTML = tool + tiles + `<div class="dgrid"><div class="card" id="dcharts">
+      <svg width="0" height="0" style="position:absolute"><defs><pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="var(--panel2)"/><line x1="0" y1="0" x2="0" y2="6" stroke="var(--line)" stroke-width="3"/></pattern></defs></svg>
+      ${charts}<div class="xlabels">${ticks}</div>
+      <div class="small muted" style="padding:0 14px 10px">Randigt: inga mätningar (viloläge eller avstängd). Hovra för att se läget och processerna, klicka för att låsa.</div></div>
+    <div class="card"><div class="chead"><span class="cname">Mest under perioden</span></div>
+      <div style="padding:8px 14px"><table class="dtop"><tr><th></th><th>Process</th><th class="n" title="Medel-CPU över perioden, i procent av en kärna">CPU</th><th class="n" title="Medel av energipåverkan, som mäts var 10:e minut">Energi</th><th class="n" title="Andel av mätningarna där den var bland de 10 som drog mest">Andel</th></tr>${top}</table>
+      <div class="small muted" style="margin-top:8px">CPU är medel över varje minut. Bara de 10 processer som drar mest sparas i varje mätning, så medlen är en undre gräns. Appars hjälpprocesser räknas till appen.</div></div></div></div>`;
+  const box = $("#dcharts");
+  box.onmousemove = e => datorHover(e, t0, t1, false);
+  box.onmouseleave = () => { if (!dPin) { $("#dtip").style.display = "none"; box.querySelectorAll(".xh").forEach(x => x.style.display = "none"); } };
+  box.onclick = e => { dPin = dPin ? null : true; datorHover(e, t0, t1, true); };
+}
+let dHoverTimer = 0;
+function datorHover(e, t0, t1, click) {
+  if (dPin && !click) return;
+  const box = $("#dcharts"), svg = box.querySelector("svg[viewBox]"); if (!svg) return;
+  const r = svg.getBoundingClientRect(), f = (e.clientX - r.left) / r.width;
+  if (f < 0 || f > 1) return;
+  const pts = dData.points, t = t0 + f * (t1 - t0);
+  // Närmaste punkt
+  let lo = 0, hi = pts.length - 1;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (pts[m].t < t) lo = m + 1; else hi = m; }
+  if (lo > 0 && Math.abs(pts[lo - 1].t - t) < Math.abs(pts[lo].t - t)) lo--;
+  const p = pts[lo], step = dData.step || 60;
+  const tip = $("#dtip");
+  if (Math.abs(p.t - t) > step * 3) { tip.style.display = "none"; return; }
+  const x = (p.t - t0) / (t1 - t0) * r.width + (r.left - box.getBoundingClientRect().left);
+  box.querySelectorAll(".xh").forEach(h => { h.style.display = "block"; h.style.left = x + "px"; });
+  const pr = { 1: "normalt", 2: "förhöjt", 4: "kritiskt" };
+  const head = `<b>${fmtT(p.t, true)}${dData.step ? `–${fmtT(p.t + step)}` : ""}</b>
+    <table><tr><td>CPU</td><td class="n">${p.cpu}%</td><td>GPU</td><td class="n">${p.gpu < 0 ? "–" : p.gpu + "%"}</td></tr>
+    <tr><td>Minne</td><td class="n">${p.memUsed} GB</td><td>swap</td><td class="n">${p.swap} GB</td></tr>
+    <tr><td>Fritt</td><td class="n">${p.memFree}%</td><td>tryck</td><td class="n">${pr[p.pressure] || "?"}</td></tr>
+    <tr><td>Energi</td><td class="n">${p.power < 0 ? "–" : p.power}</td><td>batteri</td><td class="n">${p.battery < 0 ? "–" : p.battery + "%" + (p.charging ? " ⚡" : "")}</td></tr></table>
+    ${p.thermal ? `<div style="color:var(--warn)">⚠ ${esc(p.thermal)}</div>` : ""}`;
+  const procs = list => `<div style="margin-top:6px" class="muted small">Drog mest${click || dPin ? " (låst, klicka för att släppa)" : ""}</div><table>${list.map(x => `<tr><td><b>${esc(x.name)}</b>${x.where ? `<div class="small muted">${esc(x.where)}</div>` : ""}</td><td class="n">${x.cpu}%</td><td class="n">${x.power < 0 ? "–" : x.power}</td></tr>`).join("") || `<tr><td class="muted">–</td></tr>`}</table>`;
+  const key = p.t + ":" + step, cached = dProcCache.get(key);
+  tip.innerHTML = head + (cached ? procs(cached) : `<div class="muted small" style="margin-top:6px">Hämtar processerna …</div>`);
+  tip.style.display = "block";
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  tip.style.left = Math.min(innerWidth - w - 8, e.clientX + 14) + "px";
+  tip.style.top = Math.min(innerHeight - h - 8, e.clientY + 14) + "px";
+  if (cached) return;
+  clearTimeout(dHoverTimer);
+  dHoverTimer = setTimeout(async () => {
+    try {
+      const res = await api("metrics", { from: p.t, to: p.t + (dData.step ? step - 1 : 0) }, true);
+      dProcCache.set(key, res.procs || []);
+      if (tip.style.display === "block" && tip.innerHTML.startsWith(head.slice(0, 20))) tip.innerHTML = head + procs(res.procs || []);
+    } catch {}
+  }, click ? 0 : 150);
+}
+
 function renderAutomation(v) {
   const A = S.automation || {};
   if (!A.url) { v.innerHTML = `<div class="empty">Local-Automation är inte konfigurerat. Sätt <code>automation.url</code> i konfigurationen.</div>`; return; }
@@ -1447,6 +1590,7 @@ document.addEventListener("click", async e => {
   const mi = t.closest("#menu .mitem");
   if (mi) { const m = $("#menu"); return runAction(m.dataset.repo, m.dataset.path, mi.dataset.aid); }
   if ($("#menu") && !t.closest("#menu") && !t.closest('[data-act="actions"]')) closeMenu();
+  const dr = t.closest("[data-drange]"); if (dr) { dRange = dr.dataset.drange; store.set("dRange", dRange); dPin = null; $("#dtip").style.display = "none"; dData = null; return render(); }
   const tb = t.closest("[data-tab]"); if (tb) { tab = tb.dataset.tab; store.set("tab", tab); lastKey = ""; return render(); }
   const tgo = t.closest("[data-tabgo]"); if (tgo) { tab = tgo.dataset.tabgo; store.set("tab", tab); return render(); }
   const as = t.closest("[data-ashow]"); if (as) { (opts.agentShowBy ||= {})[as.dataset.name] = as.dataset.ashow; store.set("opts", opts); return renderAgents($("#view")); }
@@ -1708,6 +1852,7 @@ const jobs = [
   { ms: () => 15000, fn: checkVersion },
   { ms: () => 3000, fn: loadQuickChat },
   { ms: () => tab === "agents" ? 15000 : 60000, fn: () => loadAgents() },
+  { ms: () => 60000, fn: () => tab === "dator" && !dPin && loadDator() },
   Object.assign(live, { ms: () => live.cur, async fn() {
     const wf = inspect?.kind === "workflow" && !["klar", "misslyckades", "avbruten"].includes(wfData?.status);
     const changed = (await Promise.all([loadPane(false), loadOrch(false), wf ? loadWorkflow().then(() => true) : false])).some(Boolean);
