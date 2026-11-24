@@ -38,6 +38,10 @@ Allt annat (byta namn på fönster, dela panes, layout, fönsterhierarki, lokala
 stoppa servrar, starta om containrar) finns i webbgränssnittet.
 
 ## Bra att veta
+- Fynd från agenterna: samma problem flaggas ofta en gång per branch. Gruppera per problem, verifiera
+  i koden på integrationsbranchen och kolla `git merge-base --is-ancestor <commit> origin/main` för
+  att se om det är i drift. Markera `resolve` först när rättningen är mergad, och R5-fynd (kräver
+  mänsklig granskning) först när användaren säger att den har granskat.
 - Konfiguration: `~/.config/devctl/config.json` (rötter att leta repos i, Obsidian-valv, kommandon).
 - Servern startar automatiskt vid inloggning efter `devctl autostart`.
 - Orkestratorn kör i tmux-sessionen `devctl` och har förhandsgodkänt bara `devctl`-kommandon.
